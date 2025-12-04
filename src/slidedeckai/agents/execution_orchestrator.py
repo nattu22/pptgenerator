@@ -278,11 +278,18 @@ class ExecutionOrchestrator:
                     )
                     return (ph_id, {'type': 'kpi', 'kpi_data': kpi})
                 else:
+                    max_bullets = self._calculate_max_bullets(ph_info.get('area', 5))
+                    max_words = self._calculate_word_limit(
+                        ph_info.get('width', 5),
+                        ph_info.get('height', 5),
+                        max_bullets
+                    )
                     bullets = self.content_generator.generate_bullets(
                         section.section_title,
                         section.section_purpose,
                         relevant_facts,
-                        max_bullets=self._calculate_max_bullets(ph_info.get('area', 5))
+                        max_bullets=max_bullets,
+                        max_words_per_bullet=max_words
                     )
                     return (ph_id, {'type': 'bullets', 'bullets': bullets})
             except Exception as e:
@@ -1037,13 +1044,19 @@ class ExecutionOrchestrator:
                 if query.query in search_results:
                     relevant_facts.extend(search_results[query.query])
         
-        max_bullets = self._calculate_max_bullets(ph_info['area'])
+        max_bullets = self._calculate_max_bullets(ph_info.get('area', 5))
+        max_words = self._calculate_word_limit(
+            ph_info.get('width', 0),
+            ph_info.get('height', 0),
+            max_bullets
+        )
         
         bullets = self.content_generator.generate_bullets(
             section.section_title,
             section.section_purpose,
             relevant_facts,
-            max_bullets=max_bullets
+            max_bullets=max_bullets,
+            max_words_per_bullet=max_words
         )
         
         text_frame = placeholder.text_frame
@@ -1089,6 +1102,21 @@ class ExecutionOrchestrator:
         else:
             return 10
     
+    def _calculate_word_limit(self, width: float, height: float, max_bullets: int) -> int:
+        """Calculate max words per bullet to fit in placeholder"""
+        if height <= 0 or width <= 0 or max_bullets <= 0:
+            return 15
+
+        # Estimate based on standard 18pt font (~0.3 inch line height)
+        lines_available = height / 0.3
+        lines_per_bullet = lines_available / max_bullets
+
+        # Estimate words per line (width * 8 chars/inch / 6 chars/word)
+        words_per_line = (width * 8) / 6
+
+        limit = int(lines_per_bullet * words_per_line)
+        return max(5, min(limit, 40))  # Clamp between 5 and 40
+
     def _calculate_font_size_from_area(self, area: float, size_type: str) -> int:
         """FIX #4: Calculate from template base size"""
         from pptx.util import Pt
