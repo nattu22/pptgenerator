@@ -8,6 +8,7 @@ CRITICAL FIXES:
 """
 import logging
 import json
+import re
 from typing import List, Dict, Optional, Set
 from pydantic import BaseModel, Field
 from openai import OpenAI
@@ -585,8 +586,9 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
         largest = sorted_phs[0]
         primary_type = self._determine_content_type(enforced, largest)
         
-        search_query = self._llm_generate_search_query(
-            query, purpose, primary_type, "primary"
+        # CHANGED: Generate multiple queries (3-5)
+        search_queries = self._llm_generate_search_queries(
+            query, purpose, primary_type, "primary", count=4
         )
         
         specs.append(PlaceholderContentSpec(
@@ -594,7 +596,7 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
             placeholder_type=largest['type'],
             content_type=primary_type,
             content_description=f"{purpose} - primary",
-            search_queries=[search_query],
+            search_queries=search_queries,
             position_group=largest.get('position_group', ''),
             role="content",
             dimensions={
@@ -607,21 +609,28 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
         for i, ph in enumerate(sorted_phs[1:], 1):
             area = ph.get('area', 0)
             
+            # IMPROVED: More variety in supporting content (Gap 2)
             if area < 1:
                 ct = 'kpi'
-            elif area < 3:
-                ct = 'bullets'
+            elif area < 4:
+                # Alternate between bullets and kpi for small/medium boxes
+                # This ensures multi-column layouts get mixed content
+                if i % 2 == 0:
+                    ct = 'kpi'
+                else:
+                    ct = 'bullets'
             else:
                 ct = 'bullets'
             
-            sq = self._llm_generate_search_query(query, purpose, ct, f"supporting_{i}")
+            # CHANGED: Generate multiple queries (2-3)
+            sqs = self._llm_generate_search_queries(query, purpose, ct, f"supporting_{i}", count=3)
             
             specs.append(PlaceholderContentSpec(
                 placeholder_idx=ph['idx'],
                 placeholder_type=ph['type'],
                 content_type=ct,
                 content_description=f"{purpose} - supporting",
-                search_queries=[sq],
+                search_queries=sqs,
                 position_group=ph.get('position_group', ''),
                 role="content",
                 dimensions={
@@ -649,42 +658,56 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
         
         return 'bullets'
     
-    def _llm_generate_search_query(self, main_query: str, purpose: str,
-                                     content_type: str, role: str) -> SearchQuery:
-        """Existing - unchanged"""
-        prompt = f"""Generate a specific search query:
+    def _llm_generate_search_queries(self, main_query: str, purpose: str,
+                                     content_type: str, role: str, count: int = 1) -> List[SearchQuery]:
+        """FIX #5: Generate multiple search queries"""
+        prompt = f"""Generate {count} specific search queries:
 
 Main topic: {main_query}
 Slide purpose: {purpose}
 Content type: {content_type}
 Role: {role}
 
-Create a search query that will find relevant data for this specific need.
-
-Return ONLY the search query text, nothing else."""
+Create {count} distinct search queries that will find relevant data for this specific need.
+Return ONLY valid JSON array of strings:
+["query 1", "query 2"]"""
         
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "Generate search queries."},
+                    {"role": "system", "content": "Generate search queries. Return JSON array."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.5,
-                max_tokens=50
+                temperature=0.7,
+                max_tokens=250
             )
             
-            query_text = response.choices[0].message.content.strip().strip('"\'')
+            text = response.choices[0].message.content.strip()
+            # Extract JSON list if embedded
+            m = re.search(r"\[.*\]", text, re.DOTALL)
+            if m:
+                text = m.group(0)
             
-            return SearchQuery(
-                query=query_text,
-                purpose=f"{purpose} - {role}",
-                expected_source_type='research'
-            )
+            queries = json.loads(text)
+
+            if not isinstance(queries, list):
+                queries = [str(queries)]
             
-        except:
-            return SearchQuery(
-                query=f"{main_query} {content_type}",
-                purpose=purpose,
-                expected_source_type='research'
-            )
+            return [
+                SearchQuery(
+                    query=q,
+                    purpose=f"{purpose} - {role}",
+                    expected_source_type='research'
+                ) for q in queries[:count]
+            ]
+
+        except Exception as e:
+            logger.warning(f"Search query generation failed: {e}")
+            return [
+                SearchQuery(
+                    query=f"{main_query} {content_type} {i+1}",
+                    purpose=purpose,
+                    expected_source_type='research'
+                ) for i in range(count)
+            ]
