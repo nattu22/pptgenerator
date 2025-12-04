@@ -51,12 +51,23 @@ class ResearchPlan(BaseModel):
 class PlanGeneratorOrchestrator:
     """FIX #1 & #6: Remove fallbacks, strengthen validation"""
     
-    def __init__(self, api_key: str, search_mode: str = 'normal'):
+    def __init__(self, api_key: str, search_mode: str = 'normal', report_mode: str = 'report'):
         self.api_key = api_key
         self.search_mode = search_mode
+        self.report_mode = report_mode
         self.client = OpenAI(api_key=api_key)
         self.model = "gpt-4o-mini"
         self.used_topics: Set[str] = set()
+
+        # Mode-specific prompts
+        self.mode_prompts = {
+            'sales': "Focus on value proposition, customer benefits, market opportunity, and call to action. Tone: Persuasive and energetic.",
+            'executive': "Focus on high-level strategy, key metrics, financial impact, and critical decisions. Tone: Concise and authoritative.",
+            'professional': "Focus on industry standards, best practices, detailed analysis, and clear methodology. Tone: Formal and objective.",
+            'report': "Focus on comprehensive coverage, data accuracy, structured findings, and detailed conclusions. Tone: Informative and balanced."
+        }
+
+        self.mode_prompt_add = self.mode_prompts.get(report_mode, self.mode_prompts['report'])
     
     def generate_plan(self, user_query: str, template_layouts: Dict, 
                      num_sections: Optional[int] = None) -> ResearchPlan:
@@ -372,9 +383,17 @@ Return ONLY the heading text, nothing else."""
     # Keep all other existing methods unchanged
     def _llm_deep_analysis(self, query: str) -> Dict:
         """Existing - unchanged"""
+
+        # Adjust for deep mode
+        aspect_count = "6-10" if self.search_mode == 'normal' else "10-15"
+        deep_instruction = "Perform a DEEP DRILL DOWN analysis." if self.search_mode == 'deep' else ""
+
         prompt = f"""You are an expert business analyst. Analyze this presentation request:
 
 "{query}"
+
+Style/Mode: {self.mode_prompt_add}
+{deep_instruction}
 
 Your task:
 1. Understand the MAIN SUBJECT (company, topic, product, etc.)
@@ -382,7 +401,7 @@ Your task:
 3. Identify ALL DISTINCT ASPECTS that should be covered
    - Think broadly: metrics, trends, comparisons, breakdowns, outlook, risks, etc.
    - Be comprehensive but avoid overlap
-   - Aim for 6-10 distinct aspects
+   - Aim for {aspect_count} distinct aspects
 
 Return ONLY valid JSON:
 {{

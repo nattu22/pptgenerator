@@ -97,6 +97,7 @@ class LayoutCapability:
     semantic_story_type: str = "general_content"
     executive_suitability: float = 0.0
     content_density_recommendation: Dict = None
+    layout_category: str = "large_content"  # NEW: blank, cover, section_divider, kpicards, small_content, large_content
     
     def __post_init__(self):
         if self.semantic_sections is None:
@@ -305,6 +306,13 @@ class TemplateAnalyzer:
             semantic_sections,
             story_type
         )
+
+        # ADDED: Determine specific layout category
+        layout_category = self._determine_layout_category(
+            has_title, has_subtitle, kpi_grid, content_placeholders,
+            text_placeholders, semantic_sections, layout.name
+        )
+
         return LayoutCapability(
             idx=idx,
             name=layout.name,
@@ -333,6 +341,7 @@ class TemplateAnalyzer:
             semantic_story_type=story_type,  # NEW
             executive_suitability=executive_suitability,  # NEW
             content_density_recommendation=content_density_rec,  # NEW
+            layout_category=layout_category  # NEW
         )
 
     def _group_placeholders_semantically(self, 
@@ -526,6 +535,54 @@ class TemplateAnalyzer:
         if section_count <= 4 and ph_count <= 6:
             return "medium", 8
         return "hard", 9
+
+    def _determine_layout_category(self, has_title: bool, has_subtitle: bool,
+                                   kpi_grid: Optional[Dict],
+                                   content_placeholders: List[PlaceholderInfo],
+                                   text_placeholders: List[PlaceholderInfo],
+                                   semantic_sections: List[Dict],
+                                   layout_name: str) -> str:
+        """NEW: Classify into 6 strict categories"""
+
+        # 1. Blank
+        if not content_placeholders and not has_title:
+            return "blank"
+
+        # 2. Cover / Title Only
+        if has_title and not content_placeholders:
+            # If it looks like a title slide
+            if "title" in layout_name.lower() and "only" not in layout_name.lower():
+                return "cover"
+            return "section_divider"
+
+        # 3. Section Divider
+        if has_title and not content_placeholders and "section" in layout_name.lower():
+            return "section_divider"
+
+        if len(content_placeholders) == 0 and len(text_placeholders) == 0:
+            if has_title:
+                return "section_divider"
+            return "blank"
+
+        # 4. KPI Cards
+        if kpi_grid:
+            return "kpicards"
+
+        # Check if it has many small boxes
+        small_boxes = sum(1 for ph in content_placeholders if ph.is_small_box)
+        if small_boxes >= 4:
+            return "kpicards"
+
+        # 5. Large Content (Charts, Tables, Big Text)
+        large_areas = sum(1 for ph in content_placeholders if ph.is_large_box)
+        if large_areas >= 1:
+            return "large_content"
+
+        if len(content_placeholders) == 1 and content_placeholders[0].area > 10:
+            return "large_content"
+
+        # 6. Small Content (Bullets, comparisons, multi-column)
+        return "small_content"
 
     def _calculate_executive_suitability(self, 
                                      visual_balance: float,

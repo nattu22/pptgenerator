@@ -135,6 +135,7 @@ def create_plan():
         query = data.get('query', '').strip()
         template_key = data.get('template', 'Basic')
         search_mode = data.get('search_mode', 'normal')
+        report_mode = data.get('report_type', 'report')
         num_sections = data.get('num_sections', None)
         
         if not query:
@@ -165,7 +166,8 @@ def create_plan():
         # Use enhanced orchestrator
         orchestrator = PlanGeneratorOrchestrator(
             api_key=api_key,
-            search_mode=search_mode
+            search_mode=search_mode,
+            report_mode=report_mode
         )
         
         # Generate plan with enforced diversity
