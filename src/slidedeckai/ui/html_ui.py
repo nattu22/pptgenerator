@@ -3,1001 +3,546 @@ HTML_UI = """
 <html>
 <head>
     <title>SlideDeck AI - Advanced Report Generator</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .sidebar { width: 280px; height: 100vh; position: fixed; left: 0; top: 0; background: white; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; z-index: 50; }
+        .main-content { margin-left: 280px; padding: 40px; min-height: 100vh; transition: margin-left 0.3s; }
+        .nav-item { padding: 12px 20px; color: #4b5563; font-weight: 500; cursor: pointer; border-left: 4px solid transparent; transition: all 0.2s; display: flex; align-items: center; gap: 10px; }
+        .nav-item:hover { background-color: #f9fafb; color: #111827; }
+        .nav-item.active { background-color: #eff6ff; color: #2563eb; border-left-color: #2563eb; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 1px solid #e5e7eb; transition: transform 0.2s; }
+        .step-container { display: none; }
+        .step-container.active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .spinner { border: 3px solid #f3f4f6; border-top: 3px solid #2563eb; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Preview Card Styles */
+        .slide-preview {
+            aspect-ratio: 16/9;
             background: white;
-            border-radius: 20px;
-            padding: 40px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        h1 {
-            color: #2563eb;
-            text-align: center;
-            margin-bottom: 10px;
-            font-size: 2.5em;
-        }
-        .subtitle {
-            text-align: center;
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 1.1em;
-        }
-        .mode-section {
-            margin: 25px 0;
-            padding: 20px;
-            background: #f9fafb;
-            border-radius: 12px;
-        }
-        .mode-label {
-            font-weight: 700;
-            color: #374151;
-            margin-bottom: 15px;
-            font-size: 1.1em;
-        }
-        .mode-options {
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+            border-radius: 8px;
             display: flex;
-            gap: 15px;
+            flex-direction: column;
         }
-        .mode-card {
-            flex: 1;
-            padding: 20px;
-            border: 2px solid #e5e7eb;
-            border-radius: 10px;
-            cursor: pointer;
-            background: white;
-            transition: all 0.3s;
-        }
-        .mode-card:hover {
-            border-color: #2563eb;
-            transform: translateY(-2px);
-        }
-        .mode-card.selected {
-            border-color: #2563eb;
-            background: #eff6ff;
-        }
-        .input-group {
-            margin: 20px 0;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-        }
-        textarea, select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
-            font-size: 16px;
-            font-family: inherit;
-        }
-        textarea {
-            resize: vertical;
-            min-height: 100px;
-        }
-        .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px 30px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            width: 100%;
-            transition: transform 0.2s;
-        }
-        .btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-        }
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        .status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 8px;
-            display: none;
-        }
-        .status.show { display: block; }
-        .status.loading { background: #dbeafe; color: #1e40af; }
-        .status.success { background: #d1fae5; color: #065f46; }
-        .status.error { background: #fee2e2; color: #991b1b; }
-        .plan-review {
-            display: none;
-            margin-top: 30px;
-            padding: 25px;
-            background: #f9fafb;
-            border-radius: 12px;
-            border: 2px solid #e5e7eb;
-        }
-        .plan-review.show { display: block; }
-        .plan-section {
-            margin: 20px 0;
-            padding: 15px;
-            background: white;
-            border-radius: 8px;
-            border-left: 4px solid #2563eb;
-        }
-        .plan-section h3 {
-            color: #1e40af;
-            margin-bottom: 10px;
-        }
-        .query-list {
-            list-style: none;
-            padding: 10px 0;
-        }
-        .query-list li {
-            padding: 8px;
-            margin: 5px 0;
-            background: #eff6ff;
-            border-radius: 6px;
-            font-size: 0.9em;
-        }
-        .action-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        .btn-approve {
-            background: #10b981;
-        }
-        .btn-edit {
-            background: #f59e0b;
-        }
-        .download-section {
-            display: none;
-            margin-top: 30px;
-        }
-        .download-section.show { display: block; }
-        .download-buttons {
-            display: flex;
-            gap: 10px;
-        }
-        .download-btn {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            color: white;
-        }
-        .btn-ppt { background: #d97706; }
-        .btn-json { background: #059669; }
-        .spinner {
-            border: 3px solid #f3f4f6;
-            border-top: 3px solid #2563eb;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-            display: none;
-        }
-        .spinner.show { display: block; }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .examples {
-            margin-top: 25px;
-            padding: 20px;
-            background: #f9fafb;
-            border-radius: 8px;
-        }
-        .example {
-            padding: 12px;
-            margin: 8px 0;
-            background: white;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .example:hover {
-            background: #e5e7eb;
-            transform: translateX(5px);
-        }
+        .slide-preview-header { background: #f8fafc; padding: 15px; border-bottom: 1px solid #e5e7eb; }
+        .slide-preview-body { padding: 20px; flex: 1; overflow-y: auto; font-size: 0.9em; }
+        .slide-preview-footer { padding: 10px; background: #f8fafc; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+
+        /* Chat Styles */
+        .chat-container { height: 500px; display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 12px; background: white; }
+        .chat-messages { flex: 1; padding: 20px; overflow-y: auto; background: #f9fafb; }
+        .chat-input-area { padding: 15px; border-top: 1px solid #e5e7eb; background: white; border-radius: 0 0 12px 12px; }
+        .message { margin-bottom: 15px; max-width: 80%; padding: 10px 15px; border-radius: 12px; font-size: 0.95em; line-height: 1.5; }
+        .message.user { background: #2563eb; color: white; align-self: flex-end; margin-left: auto; border-bottom-right-radius: 4px; }
+        .message.ai { background: white; border: 1px solid #e5e7eb; align-self: flex-start; margin-right: auto; border-bottom-left-radius: 4px; }
+
+        .selected-slide { border: 3px solid #2563eb !important; box-shadow: 0 0 15px rgba(37, 99, 235, 0.2); }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🚀 SlideDeck AI</h1>
-        <p class="subtitle">Intelligent multi-agent system with review & approval workflow</p>
-        
-        <div class="mode-section">
-            <div class="mode-label">Search Mode</div>
-            <div class="mode-options">
-                <div class="mode-card selected" data-mode="normal" onclick="selectMode('normal')">
-                    <h3>⚡ Normal</h3>
-                    <p>3 queries/section • Fast generation</p>
-                </div>
-                <div class="mode-card" data-mode="deep" onclick="selectMode('deep')">
-                    <h3>🔬 Deep</h3>
-                    <p>5 queries/section • Comprehensive</p>
-                </div>
-            </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="p-6 border-b border-gray-200">
+            <h1 class="text-2xl font-bold text-blue-600 flex items-center gap-2">
+                <i class="fa-solid fa-layer-group"></i> SlideDeck AI
+            </h1>
+            <p class="text-xs text-gray-500 mt-1">Intelligent Presentation Agent</p>
         </div>
-        
-        <div class="input-group">
-            <label>Template Style</label>
-            <select id="template">
-                <option value="">Loading templates...</option>
-            </select>
-        </div>
-        
-        <div class="input-group">
-            <label>Research Query</label>
-            <textarea id="query" placeholder="e.g., Tesla Q4 2024 financial performance and market position"></textarea>
-        </div>
-        
-        <button class="btn" onclick="generatePlan()">🔍 Analyze & Create Plan</button>
-        
-        <div class="spinner" id="spinner"></div>
-        <div class="status" id="status"></div>
-        
-        <div class="plan-review" id="planReview">
-            <h2 style="margin-bottom: 20px; color: #1e40af;">📋 Research Plan Review</h2>
-            <div id="planContent"></div>
-            <div class="action-buttons">
-                <button class="btn btn-approve" onclick="approvePlan()">✅ Approve & Generate Slides</button>
-                <button class="btn btn-edit" onclick="editPlan()">✏️ Edit Plan</button>
+        <nav class="flex-1 py-4">
+            <div class="nav-item active" onclick="switchTab('create')">
+                <i class="fa-solid fa-wand-magic-sparkles w-5"></i> Create New
             </div>
-        </div>
-        
-        <div class="download-section" id="downloadSection">
-            <h3 style="margin-bottom: 15px; color: #1e40af;">📥 Download Presentation</h3>
-            <div class="download-buttons">
-                <button class="download-btn btn-ppt" onclick="download('ppt')">📊 PowerPoint</button>
-                <button class="download-btn btn-json" onclick="download('json')">📋 JSON</button>
+            <div class="nav-item" onclick="switchTab('plan')" id="nav-plan" style="opacity: 0.5; pointer-events: none;">
+                <i class="fa-solid fa-list-check w-5"></i> Research Plan
             </div>
-        </div>
-        
-        <div class="examples">
-            <h3 style="margin-bottom: 15px;">💡 Example Queries</h3>
-            <div class="example" onclick="setQuery('Apple Inc financial performance and market analysis Q4 2024')">
-                🍎 Apple Inc financial performance and market analysis Q4 2024
+            <div class="nav-item" onclick="switchTab('editor')" id="nav-editor" style="opacity: 0.5; pointer-events: none;">
+                <i class="fa-solid fa-pen-to-square w-5"></i> Editor & Preview
             </div>
-            <div class="example" onclick="setQuery('Global electric vehicle market trends and competitive landscape 2024')">
-                🚗 Global electric vehicle market trends and competitive landscape 2024
+            <div class="nav-item" onclick="switchTab('download')" id="nav-download" style="opacity: 0.5; pointer-events: none;">
+                <i class="fa-solid fa-download w-5"></i> Download
             </div>
-            <div class="example" onclick="setQuery('Artificial Intelligence in healthcare: applications, market size, and future outlook')">
-                🏥 AI in healthcare: applications, market size, and future outlook
-            </div>
+        </nav>
+        <div class="p-4 border-t border-gray-200">
+            <div class="text-xs text-gray-400 text-center">v2.5.0 Production</div>
         </div>
     </div>
-    
+
+    <!-- Main Content -->
+    <div class="main-content">
+        
+        <!-- Tab: Create -->
+        <div id="tab-create" class="step-container active">
+            <div class="max-w-4xl mx-auto">
+                <h2 class="text-3xl font-bold text-gray-800 mb-2">Create New Presentation</h2>
+                <p class="text-gray-500 mb-8">Configure your requirements and let AI handle the research and design.</p>
+
+                <div class="card p-8 mb-8">
+                    <!-- Report Type -->
+                    <div class="mb-8">
+                        <label class="block text-sm font-semibold text-gray-700 mb-3">Presentation Type</label>
+                        <div class="grid grid-cols-4 gap-4">
+                            <div class="mode-card cursor-pointer border-2 border-blue-500 bg-blue-50 rounded-lg p-4 transition hover:shadow-md text-center" onclick="selectType(this, 'sales')">
+                                <div class="text-2xl mb-2">🚀</div>
+                                <div class="font-bold text-blue-700">Sales Pitch</div>
+                            </div>
+                            <div class="mode-card cursor-pointer border-2 border-transparent bg-gray-50 rounded-lg p-4 transition hover:shadow-md text-center" onclick="selectType(this, 'executive')">
+                                <div class="text-2xl mb-2">👔</div>
+                                <div class="font-bold text-gray-700">Executive</div>
+                            </div>
+                            <div class="mode-card cursor-pointer border-2 border-transparent bg-gray-50 rounded-lg p-4 transition hover:shadow-md text-center" onclick="selectType(this, 'professional')">
+                                <div class="text-2xl mb-2">💼</div>
+                                <div class="font-bold text-gray-700">Professional</div>
+                            </div>
+                            <div class="mode-card cursor-pointer border-2 border-transparent bg-gray-50 rounded-lg p-4 transition hover:shadow-md text-center" onclick="selectType(this, 'report')">
+                                <div class="text-2xl mb-2">📊</div>
+                                <div class="font-bold text-gray-700">Report</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Template -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Visual Template</label>
+                        <select id="templateSelect" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                            <option>Loading templates...</option>
+                        </select>
+                    </div>
+
+                    <!-- Topic -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Topic / Query</label>
+                        <textarea id="queryInput" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none min-h-[100px]" placeholder="e.g. Analysis of AI trends in Healthcare for Q3 2024..."></textarea>
+                    </div>
+
+                    <!-- Mode -->
+                    <div class="flex items-center gap-4 mb-8">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="mode" value="normal" checked class="w-4 h-4 text-blue-600">
+                            <span class="text-gray-700">Normal Search (Fast)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="mode" value="deep" class="w-4 h-4 text-blue-600">
+                            <span class="text-gray-700">Deep Research (Comprehensive)</span>
+                        </label>
+                    </div>
+
+                    <button onclick="generatePlan()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg transition flex justify-center items-center gap-2">
+                        <span id="btn-text-plan">Generate Plan</span>
+                        <div id="spinner-plan" class="spinner" style="border-top-color: white; display: none;"></div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Plan -->
+        <div id="tab-plan" class="step-container">
+            <div class="max-w-5xl mx-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Review Plan</h2>
+                    <div class="flex gap-3">
+                        <button onclick="switchTab('create')" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Back</button>
+                        <button onclick="approvePlan()" class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg flex items-center gap-2">
+                            <span>Approve & Build</span>
+                            <div id="spinner-build" class="spinner" style="border-top-color: white; border-width: 2px; width: 16px; height: 16px; display: none;"></div>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="planContent" class="space-y-4">
+                    <!-- Plan items injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Editor -->
+        <div id="tab-editor" class="step-container">
+            <div class="max-w-6xl mx-auto h-[calc(100vh-80px)] flex gap-6">
+                <!-- Left: Slides List -->
+                <div class="w-2/3 flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-bold text-gray-800">Slide Editor</h2>
+                        <button onclick="saveContent()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                            <i class="fa-solid fa-floppy-disk mr-2"></i> Save Changes
+                        </button>
+                    </div>
+
+                    <div id="editor-slides-container" class="flex-1 overflow-y-auto pr-2 space-y-8 pb-20">
+                        <!-- Slide Editors injected here -->
+                    </div>
+                </div>
+
+                <!-- Right: Chat / Copilot -->
+                <div class="w-1/3 flex flex-col">
+                    <h3 class="text-lg font-bold text-gray-700 mb-4">Copilot</h3>
+                    <div class="chat-container flex-1">
+                        <div id="chat-messages" class="chat-messages flex flex-col gap-3">
+                            <div class="message ai">
+                                Hello! I can help you restructure slides. Try asking "Change slide 2 to a chart" or "Make slide 3 a comparison".
+                            </div>
+                        </div>
+                        <div class="chat-input-area">
+                            <div class="flex gap-2">
+                                <input type="text" id="chat-input" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" placeholder="Type instructions...">
+                                <button onclick="sendChat()" class="bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700">
+                                    <i class="fa-solid fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Download -->
+        <div id="tab-download" class="step-container">
+            <div class="max-w-2xl mx-auto text-center mt-20">
+                <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-gray-800 mb-4">Presentation Ready!</h2>
+                <p class="text-gray-600 mb-8">Your slides have been generated successfully. You can download the final PowerPoint file below.</p>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="downloadFile('ppt')" class="p-6 border-2 border-blue-100 hover:border-blue-500 bg-white rounded-xl transition group">
+                        <div class="text-4xl text-orange-500 mb-3 group-hover:scale-110 transition">
+                            <i class="fa-solid fa-file-powerpoint"></i>
+                        </div>
+                        <div class="font-bold text-gray-800">Download .PPTX</div>
+                        <div class="text-xs text-gray-400 mt-1">Editable PowerPoint</div>
+                    </button>
+
+                    <button onclick="downloadFile('json')" class="p-6 border-2 border-gray-100 hover:border-gray-400 bg-white rounded-xl transition group">
+                        <div class="text-4xl text-green-600 mb-3 group-hover:scale-110 transition">
+                            <i class="fa-solid fa-file-code"></i>
+                        </div>
+                        <div class="font-bold text-gray-800">Download JSON</div>
+                        <div class="text-xs text-gray-400 mt-1">Data Source</div>
+                    </button>
+                </div>
+
+                <button onclick="switchTab('create')" class="mt-12 text-blue-600 hover:underline">Start New Project</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+        Notification
+    </div>
+
     <script>
-        let selectedMode = 'normal';
+        // State
         let currentPlan = null;
         let reportId = null;
-        let templateOptions = {};
-        let planSectionsCollapsed = false;
-        
-        // Function to load templates from the backend
-        async function loadTemplates() {
-            console.log('🔄 Loading templates from /api/templates...');
-            try {
-                const response = await fetch('/api/templates');
-                console.log('📡 Response status:', response.status);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
-                templateOptions = await response.json();
-                console.log('✅ Templates received:', templateOptions);
-                
-                const templateSelect = document.getElementById('template');
-                templateSelect.innerHTML = '';
-                
-                // Check if we got valid data
-                if (!templateOptions || Object.keys(templateOptions).length === 0) {
-                    throw new Error('No templates returned from server');
-                }
-                
-                // Add options from the fetched data
-                Object.keys(templateOptions).forEach(key => {
-                    const option = document.createElement('option');
-                    option.value = key;                 // value sent to backend
-                    option.textContent = key;           // ✅ show the key, not caption
-                    // if you want both:
-                    // option.textContent = `${key} – ${templateOptions[key].caption}`;
-                    templateSelect.appendChild(option);
-                });
-                
-                // Set default selection
-                templateSelect.value = Object.keys(templateOptions)[0];
-                console.log('✅ Templates loaded successfully');
-                
-            } catch (error) {
-                console.error('❌ Error loading templates:', error);
-                // Fallback to hardcoded options
-                const templateSelect = document.getElementById('template');
-                    templateSelect.innerHTML = `
-                        <option value="Basic">Basic</option>
-                        <option value="Ion Boardroom">Ion Boardroom</option>
-                        <option value="Minimalist Sales Pitch">Minimalist Sales Pitch</option>
-                        <option value="Urban Monochrome">Urban Monochrome</option>
-                        <option value="RRD Template">RRD Template</option>
-                        <option value="WilliamsLea">WilliamsLea</option>
-                    `;
-                console.log('⚠️ Using fallback templates');
-            }
-        }
-        
-        // Call loadTemplates when the page loads
+        let selectedType = 'sales';
+        let executionLog = [];
+        let selectedSlideIndex = 0;
+
+        // Initialization
         window.addEventListener('DOMContentLoaded', () => {
-            console.log('🚀 Page loaded, initializing...');
             loadTemplates();
         });
-        
-        function selectMode(mode) {
-            selectedMode = mode;
-            document.querySelectorAll('.mode-card').forEach(card => {
-                card.classList.toggle('selected', card.dataset.mode === mode);
+
+        // UI Helpers
+        function switchTab(tabId) {
+            document.querySelectorAll('.step-container').forEach(el => el.classList.remove('active'));
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const navItem = document.getElementById(`nav-${tabId}`);
+            if(navItem) navItem.classList.add('active');
+            else if(tabId === 'create') document.querySelector('.nav-item').classList.add('active');
+        }
+
+        function showToast(msg, type='info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.className = `fixed bottom-5 right-5 px-6 py-3 rounded-lg shadow-lg transform translate-y-0 opacity-100 transition-all duration-300 z-50 ${type === 'error' ? 'bg-red-600' : 'bg-gray-800'} text-white`;
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        function selectType(el, type) {
+            document.querySelectorAll('.mode-card').forEach(c => {
+                c.classList.remove('border-blue-500', 'bg-blue-50');
+                c.classList.add('border-transparent', 'bg-gray-50');
+                c.querySelector('.font-bold').classList.remove('text-blue-700');
+                c.querySelector('.font-bold').classList.add('text-gray-700');
             });
+            el.classList.remove('border-transparent', 'bg-gray-50');
+            el.classList.add('border-blue-500', 'bg-blue-50');
+            el.querySelector('.font-bold').classList.remove('text-gray-700');
+            el.querySelector('.font-bold').classList.add('text-blue-700');
+            selectedType = type;
         }
-        
-        function setQuery(text) {
-            document.getElementById('query').value = text;
-        }
-        
-        function showStatus(msg, type) {
-            const status = document.getElementById('status');
-            status.textContent = msg;
-            status.className = 'status show ' + type;
-        }
-        
-        async function generatePlan() {
-            const query = document.getElementById('query').value.trim();
-            if (!query) {
-                showStatus('⚠️ Please enter a research query', 'error');
-                return;
-            }
-            
-            const template = document.getElementById('template').value;
-            
-            document.getElementById('spinner').classList.add('show');
-            document.getElementById('planReview').classList.remove('show');
-            showStatus('🔍 Analyzing query and generating research plan...', 'loading');
-            
+
+        async function loadTemplates() {
             try {
-                console.log('🚀 Sending request to /api/plan');
-                console.log('📤 Request data:', { query, search_mode: selectedMode, template });
-                
-                const response = await fetch('/api/plan', {
+                const res = await fetch('/api/templates');
+                const templates = await res.json();
+                const select = document.getElementById('templateSelect');
+                select.innerHTML = '';
+                Object.keys(templates).forEach(key => {
+                    const opt = document.createElement('option');
+                    opt.value = key;
+                    opt.textContent = key;
+                    select.appendChild(opt);
+                });
+            } catch(e) {
+                console.error(e);
+            }
+        }
+
+        // --- PHASE 1: Plan ---
+
+        async function generatePlan() {
+            const query = document.getElementById('queryInput').value;
+            if(!query) return showToast('Please enter a topic', 'error');
+
+            document.getElementById('btn-text-plan').textContent = 'Analyzing...';
+            document.getElementById('spinner-plan').style.display = 'block';
+
+            try {
+                const res = await fetch('/api/plan', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ 
-                        query, 
-                        search_mode: selectedMode,
-                        template: template
+                    body: JSON.stringify({
+                        query,
+                        template: document.getElementById('templateSelect').value,
+                        search_mode: document.querySelector('input[name="mode"]:checked').value,
+                        report_type: selectedType
                     })
                 });
                 
-                console.log('📡 Response received');
-                console.log('📡 Response status:', response.status);
-                console.log('📡 Response ok:', response.ok);
-                console.log('📡 Response headers:', [...response.headers.entries()]);
+                if(!res.ok) throw new Error(await res.text());
                 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('❌ Server error response:', errorText);
-                    throw new Error('Plan generation failed: ' + errorText);
-                }
+                currentPlan = await res.json();
+                renderPlan(currentPlan);
                 
-                const responseText = await response.text();
-                console.log('📦 Raw response text:', responseText);
-                
-                let responseData;
-                try {
-                    responseData = JSON.parse(responseText);
-                } catch (parseError) {
-                    console.error('❌ JSON parse error:', parseError);
-                    console.error('❌ Failed to parse:', responseText.substring(0, 200));
-                    throw new Error('Invalid JSON response from server');
-                }
-                
-                console.log('📦 Parsed response:', responseData);
-                console.log('📦 Response type:', typeof responseData);
-                console.log('📦 Response keys:', Object.keys(responseData));
-                console.log('📦 Has sections?:', 'sections' in responseData);
-                console.log('📦 Sections value:', responseData.sections);
-                console.log('📦 Sections type:', typeof responseData.sections);
-                console.log('📦 Sections is array?:', Array.isArray(responseData.sections));
-                console.log('📦 Sections length:', responseData.sections?.length);
-                
-                if (!responseData.sections) {
-                    console.error('❌ responseData.sections is falsy:', responseData.sections);
-                    throw new Error('Response missing sections field');
-                }
-                
-                if (!Array.isArray(responseData.sections)) {
-                    console.error('❌ responseData.sections is not an array:', typeof responseData.sections);
-                    throw new Error('Response sections is not an array: ' + typeof responseData.sections);
-                }
-                
-                if (responseData.sections.length === 0) {
-                    console.warn('⚠️ responseData.sections is empty array');
-                }
-                
-                currentPlan = responseData;
-                console.log('✅ Set currentPlan:', currentPlan);
-                
-                displayPlan(currentPlan);
-                
-                document.getElementById('spinner').classList.remove('show');
-                showStatus('✅ Research plan ready for review!', 'success');
-                document.getElementById('planReview').classList.add('show');
-                
-            } catch (error) {
-                document.getElementById('spinner').classList.remove('show');
-                console.error('❌ Full error object:', error);
-                console.error('❌ Error stack:', error.stack);
-                showStatus('❌ Error: ' + error.message, 'error');
+                // Enable Plan Tab
+                document.getElementById('nav-plan').style.opacity = '1';
+                document.getElementById('nav-plan').style.pointerEvents = 'auto';
+                switchTab('plan');
+
+            } catch(e) {
+                showToast('Error generating plan: ' + e.message, 'error');
+            } finally {
+                document.getElementById('btn-text-plan').textContent = 'Generate Plan';
+                document.getElementById('spinner-plan').style.display = 'none';
             }
         }
-        
-        function displayPlan(plan) {
-            if (reportId === null) planSectionsCollapsed = false;
-            const content = document.getElementById('planContent');
-            
-            // ✅ SAFETY CHECK: Ensure plan.sections exists and is an array
-            if (!plan || !plan.sections || !Array.isArray(plan.sections)) {
-                console.error('❌ Invalid plan structure:', plan);
-                content.innerHTML = `
-                    <div style="padding: 20px; background: #fee2e2; border-radius: 8px; color: #991b1b;">
-                        <strong>⚠️ Error:</strong> Invalid plan structure received from server.
-                        <br><small>Please try generating the plan again.</small>
-                    </div>
-                `;
-                return;
-            }
-            
-            console.log('✅ displayPlan called with valid plan:', plan);
-            console.log('✅ Number of sections:', plan.sections.length);
-            
-            let html = `
-                <div style="margin-bottom: 20px; padding: 15px; background: #eff6ff; border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
+
+        function renderPlan(plan) {
+            const container = document.getElementById('planContent');
+            container.innerHTML = plan.sections.map((sec, idx) => `
+                <div class="card p-5 border-l-4 border-l-blue-500">
+                    <div class="flex justify-between items-start">
                         <div>
-                            <h4>Report Type: ${plan.analysis?.report_type || 'N/A'}</h4>
-                            <p><strong>Subject:</strong> ${plan.analysis?.core_subject || plan.query}</p>
-                            <p><strong>Total Queries:</strong> ${plan.total_queries || 0}</p>
-                            <p><strong>Template:</strong> ${plan.template || 'Default'}</p>
-                        </div>
-                        <button id="togglePlanBtn" onclick="togglePlanSections()" 
-                                style="display: inline-block; background: #6b7280; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">
-                            ▼ Collapse All
-                        </button>
-                    </div>
-                </div>
-                <div id="planSectionsContainer" style="display: block;">
-            `;
-        
-            // ✅ FIX: Build sections HTML safely
-            plan.sections.forEach((section, idx) => {
-                console.log(`Processing section ${idx}:`, section.section_title);
-                
-                // Extract search queries from placeholder_specs
-                let searchQueries = [];
-                
-                if (section.placeholder_specs && Array.isArray(section.placeholder_specs)) {
-                    section.placeholder_specs.forEach(spec => {
-                        if (spec.search_queries && Array.isArray(spec.search_queries)) {
-                            searchQueries = searchQueries.concat(spec.search_queries);
-                        }
-                    });
-                }
-                
-                console.log(`  Section ${idx} has ${searchQueries.length} search queries`);
-                
-                // ✅ Build query list HTML separately
-                let queryListHtml = '';
-                if (searchQueries.length > 0) {
-                    queryListHtml = searchQueries.map(q => 
-                        `<li>🔍 ${q.query || 'No query'}<br>
-                        <small style="color: #6b7280;">Purpose: ${q.purpose || 'N/A'}</small></li>`
-                    ).join('');
-                } else {
-                    queryListHtml = '<li style="color: #9ca3af;">No search queries defined</li>';
-                }
-                
-                // ✅ Build placeholder specs HTML separately
-                let placeholderSpecsHtml = '';
-                if (section.placeholder_specs && section.placeholder_specs.length > 0) {
-                    const specsHtml = section.placeholder_specs.map(spec => 
-                        `<div style="background: #f9fafb; padding: 10px; margin: 5px 0; border-radius: 6px; border-left: 3px solid #3b82f6;">
-                            <strong>Placeholder ${spec.placeholder_idx}</strong> (${spec.placeholder_type})<br>
-                            <small style="color: #6b7280;">
-                                Content Type: ${spec.content_type}<br>
-                                Description: ${spec.content_description}
-                            </small>
-                        </div>`
-                    ).join('');
-                    
-                    placeholderSpecsHtml = `
-                        <details style="margin-top: 10px;">
-                            <summary style="cursor: pointer; font-weight: 600; color: #374151;">
-                                📋 Placeholder Specifications (${section.placeholder_specs.length})
-                            </summary>
-                            <div style="margin-top: 8px; padding-left: 10px;">
-                                ${specsHtml}
+                            <h3 class="font-bold text-lg text-gray-800">Slide ${idx+1}: ${sec.section_title}</h3>
+                            <p class="text-sm text-gray-600 mt-1">${sec.section_purpose}</p>
+                            <div class="mt-3 flex gap-2">
+                                <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded">Layout: ${sec.layout_type}</span>
+                                <span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded">${sec.search_queries?.length || 0} Queries</span>
                             </div>
-                        </details>
-                    `;
-                }
-                
-                // ✅ Now safely build the section HTML
-                html += `
-                    <div class="plan-section" id="plan_section_${idx}">
-                        <h3>${idx + 1}. ${section.section_title || 'Untitled Section'}</h3>
-                        <p style="color: #6b7280; font-size: 0.9em; margin: 10px 0;">
-                            ${section.section_purpose || 'No purpose specified'}
-                        </p>
-                        <p style="margin: 10px 0;">
-                            <strong>Layout:</strong> ${section.layout_type || 'N/A'} (Index: ${section.layout_idx || 'N/A'})
-                        </p>
-                        
-                        <details style="margin-top: 10px;">
-                            <summary style="cursor: pointer; font-weight: 600; color: #374151;">
-                                🔍 Search Queries (${searchQueries.length})
-                            </summary>
-                            <ul class="query-list" style="margin-top: 8px;">
-                                ${queryListHtml}
-                            </ul>
-                        </details>
-                        
-                        ${placeholderSpecsHtml}
-                    </div>
-                `;
-            });
-        
-            html += '</div>';
-            
-            console.log('✅ Setting innerHTML');
-            content.innerHTML = html;
-            
-            console.log('✅ Setting collapsed state');
-            setPlanSectionsCollapsed(planSectionsCollapsed);
-            
-            console.log('✅ displayPlan completed successfully');
-        }
-        
-        function setPlanSectionsCollapsed(collapsed) {
-            const container = document.getElementById('planSectionsContainer');
-            const btn = document.getElementById('togglePlanBtn');
-        
-            if (!container || !btn) {
-                console.warn('setPlanSectionsCollapsed: elements not found');
-                return;
-            }
-        
-            planSectionsCollapsed = collapsed;
-        
-            if (planSectionsCollapsed) {
-                container.style.display = 'none';
-                btn.textContent = '▶ Expand All';
-            } else {
-                container.style.display = 'block';
-                btn.textContent = '▼ Collapse All';
-            }
-        }
-        
-        function togglePlanSections() {
-            planSectionsCollapsed = !planSectionsCollapsed;
-            setPlanSectionsCollapsed(planSectionsCollapsed);     // 🔥 force UI update after toggle
-            const btn = document.getElementById('togglePlanBtn');
-            if (btn) btn.blur();          // optional UX (prevents button staying focused)
-        }
-
-        function approvePlan() {
-            console.log('🔍 Current plan:', currentPlan);
-            if (!currentPlan || !currentPlan.plan_id) {
-                console.error('❌ No plan_id found!', currentPlan);  // ✅ DEBUG
-                showStatus('❌ No plan available to execute', 'error');
-                return;
-            }
-            
-            console.log('✅ Sending plan_id:', currentPlan.plan_id); 
-            
-            // Collapse sections BEFORE starting generation
-            planSectionsCollapsed = true;
-            setPlanSectionsCollapsed(planSectionsCollapsed);
-            
-            document.getElementById('spinner').classList.add('show');
-            showStatus('🚀 Generating slides with SlideDeck AI...', 'loading');
-            
-            fetch('/api/execute', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ 
-                    plan_id: currentPlan.plan_id  // ✅ FIXED - send plan_id only
-                })
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.json().then(err => {
-                        throw new Error(err.error || 'Slide generation failed');
-                    });
-                }
-                return response.json();
-            })
-            .then(result => {
-                reportId = result.report_id;
-                document.getElementById('spinner').classList.remove('show');
-                showStatus(`✅ Slides generated successfully! (${result.slides_generated} slides in ${result.execution_time})`, 'success');
-                document.getElementById('downloadSection').classList.add('show');
-            })
-            .catch(error => {
-                document.getElementById('spinner').classList.remove('show');
-                showStatus('❌ Error: ' + error.message, 'error');
-                console.error('Execution error:', error);
-            });
-        }
-        
-        function editPlan() {
-            const content = document.getElementById('planContent');
-            let html = '<h3 style="margin-bottom: 20px;">✏️ Edit Research Plan</h3>';
-            
-            // ✅ Safety check
-            if (!currentPlan || !currentPlan.sections || !Array.isArray(currentPlan.sections)) {
-                html += '<p style="color: #dc2626;">Error: Invalid plan structure. Cannot edit.</p>';
-                content.innerHTML = html;
-                return;
-            }
-            
-            currentPlan.sections.forEach((section, idx) => {
-                // ✅ Extract search queries from NEW FORMAT (placeholder_specs)
-                let searchQueries = [];
-                
-                if (section.placeholder_specs && Array.isArray(section.placeholder_specs)) {
-                    // Flatten all queries from all placeholder_specs
-                    section.placeholder_specs.forEach(spec => {
-                        if (spec.search_queries && Array.isArray(spec.search_queries)) {
-                            searchQueries = searchQueries.concat(spec.search_queries);
-                        }
-                    });
-                }
-                
-                // ✅ Store in OLD format for backward compatibility with edit UI
-                section.search_queries = searchQueries;
-                
-                html += `
-                    <div class="plan-section" id="section_${idx}" style="margin: 15px 0; position: relative;">
-                        <button onclick="deleteSection(${idx})" 
-                                style="position: absolute; top: 10px; right: 10px; background: #dc2626; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                            🗑️ Delete
-                        </button>
-                        
-                        <label style="font-weight: 600; color: #374151;">Section ${idx + 1} Title:</label>
-                        <input type="text" id="section_${idx}_title" value="${escapeHtml(section.section_title || '')}" 
-                               style="width: 100%; padding: 8px; margin: 5px 0; border: 2px solid #e5e7eb; border-radius: 6px;">
-                        
-                        <label style="font-weight: 600; color: #374151; margin-top: 10px; display: block;">Purpose:</label>
-                        <textarea id="section_${idx}_purpose" 
-                                  style="width: 100%; padding: 8px; margin: 5px 0; border: 2px solid #e5e7eb; border-radius: 6px; min-height: 60px;">${escapeHtml(section.section_purpose || '')}</textarea>
-                        
-                        <label style="font-weight: 600; color: #374151; margin-top: 10px; display: block;">Layout Type:</label>
-                        <input type="text" id="section_${idx}_layout" value="${escapeHtml(section.layout_type || 'single_column')}" 
-                               style="width: 100%; padding: 8px; margin: 5px 0; border: 2px solid #e5e7eb; border-radius: 6px;"
-                               placeholder="e.g., chart_layout, table_layout, double_column">
-                        
-                        <div style="margin-top: 10px;">
-                            <label style="font-weight: 600; color: #374151;">Search Queries:</label>
-                            <div id="queries_${idx}">
-                                ${searchQueries.map((q, qIdx) => `
-                                    <div class="query-item" id="query_item_${idx}_${qIdx}" style="background: #f3f4f6; padding: 10px; margin: 5px 0; border-radius: 6px; position: relative;">
-                                        <button onclick="deleteQuery(${idx}, ${qIdx})" 
-                                                style="position: absolute; top: 5px; right: 5px; background: #ef4444; color: white; border: none; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">
-                                            ✕
-                                        </button>
-                                        <label style="font-size: 11px; color: #6b7280; display: block; margin-bottom: 3px;">Search Query:</label>
-                                        <input type="text" id="query_${idx}_${qIdx}" value="${escapeHtml(q.query || '')}" 
-                                               style="width: calc(100% - 30px); padding: 6px; margin: 2px 0; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;">
-                                        <label style="font-size: 11px; color: #6b7280; display: block; margin-bottom: 3px; margin-top: 5px;">Purpose:</label>
-                                        <input type="text" id="query_purpose_${idx}_${qIdx}" value="${escapeHtml(q.purpose || '')}" 
-                                               placeholder="Query purpose..."
-                                               style="width: calc(100% - 30px); padding: 6px; margin: 2px 0; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; color: #6b7280;">
-                                        <label style="font-size: 11px; color: #6b7280; display: block; margin-bottom: 3px; margin-top: 5px;">Expected Source:</label>
-                                        <select id="query_source_${idx}_${qIdx}" 
-                                                style="width: calc(100% - 30px); padding: 6px; margin: 2px 0; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px;">
-                                            <option value="research" ${q.expected_source_type === 'research' ? 'selected' : ''}>Research</option>
-                                            <option value="news" ${q.expected_source_type === 'news' ? 'selected' : ''}>News</option>
-                                            <option value="data" ${q.expected_source_type === 'data' ? 'selected' : ''}>Data</option>
-                                            <option value="financial" ${q.expected_source_type === 'financial' ? 'selected' : ''}>Financial</option>
-                                            <option value="expert" ${q.expected_source_type === 'expert' ? 'selected' : ''}>Expert</option>
-                                        </select>
-                                    </div>
-                                `).join('')}
-                            </div>
-                            <button onclick="addQuery(${idx})" 
-                                    style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-top: 5px;">
-                                ➕ Add Query
-                            </button>
                         </div>
                     </div>
-                `;
-            });
-            
-            html += `
-                <div style="margin: 20px 0; text-align: center;">
-                    <button onclick="addSection()" 
-                            style="background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
-                        ➕ Add New Section
-                    </button>
                 </div>
-                <div style="display: flex; gap: 10px; margin-top: 20px;">
-                    <button class="btn" onclick="saveEdits()" style="flex: 1;">💾 Save Changes</button>
-                    <button class="btn" onclick="cancelEdits()" style="flex: 1; background: #6b7280;">❌ Cancel</button>
-                </div>
-            `;
-            
-            content.innerHTML = html;
-            showStatus('✏️ Editing mode active - update sections above', 'loading');
+            `).join('');
         }
 
-        function updatePlanSectionsView() {
-            const container = document.getElementById('planSectionsContainer');
-            const btn = document.getElementById('togglePlanBtn');
-        
-            if (!container || !btn) {
-                console.warn('updatePlanSectionsView: elements not found');
-                return;
-            }
-        
-            if (planSectionsCollapsed) {
-                container.style.display = 'none';
-                btn.textContent = '▶ Expand All';
-            } else {
-                container.style.display = 'block';
-                btn.textContent = '▼ Collapse All';
-            }
-        }
+        // --- PHASE 2: Execute ---
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        function addSection() {
-            // Create a new section with default values
-            const newSection = {
-                section_title: "New Section",
-                section_purpose: "Describe the purpose of this section",
-                visualization_hint: "bullets",
-                search_queries: [
-                    {
-                        query: "Enter search query here",
-                        purpose: "what this query targets",
-                        expected_source_type: "research"
-                    }
-                ]
-            };
-            
-            // Add to current plan
-            currentPlan.sections.push(newSection);
-            
-            // Refresh the edit view
-            editPlan();
-            
-            showStatus('✅ New section added! Scroll down to edit it.', 'success');
-            
-            // Scroll to the new section
-            setTimeout(() => {
-                const newSectionId = `section_${currentPlan.sections.length - 1}`;
-                const element = document.getElementById(newSectionId);
-                if (element) {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    element.style.border = '2px solid #2563eb';
-                    setTimeout(() => {
-                        element.style.border = '';
-                    }, 2000);
-                }
-            }, 100);
-        }
-        
-        function deleteSection(sectionIdx) {
-            if (currentPlan.sections.length <= 1) {
-                showStatus('⚠️ Cannot delete the last section!', 'error');
-                return;
-            }
-            
-            const sectionTitle = currentPlan.sections[sectionIdx].section_title;
-            
-            if (confirm(`Are you sure you want to delete "${sectionTitle}"?`)) {
-                // Remove the section
-                currentPlan.sections.splice(sectionIdx, 1);
-                
-                // Refresh the edit view
-                editPlan();
-                
-                showStatus(`✅ Section "${sectionTitle}" deleted.`, 'success');
-            }
-        }
-        
-        function addQuery(sectionIdx) {
-            const newQuery = {
-                query: "Enter new search query",
-                purpose: "what this query targets",
-                expected_source_type: "research"
-            };
-            
-            // Add to section's queries
-            currentPlan.sections[sectionIdx].search_queries.push(newQuery);
-            
-            // Refresh the edit view
-            editPlan();
-            
-            showStatus('✅ New query added to section!', 'success');
-            
-            // Auto-scroll to the new query
-            setTimeout(() => {
-                const queriesDiv = document.getElementById(`queries_${sectionIdx}`);
-                if (queriesDiv) {
-                    queriesDiv.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                }
-            }, 100);
-        }
-        
-        function deleteQuery(sectionIdx, queryIdx) {
-            const section = currentPlan.sections[sectionIdx];
-            
-            if (section.search_queries.length <= 1) {
-                showStatus('⚠️ Each section must have at least one query!', 'error');
-                return;
-            }
-            
-            if (confirm('Delete this search query?')) {
-                // Remove the query
-                section.search_queries.splice(queryIdx, 1);
-                
-                // Refresh the edit view
-                editPlan();
-                
-                showStatus('✅ Query deleted.', 'success');
-            }
-        }
-        
-        function cancelEdits() {
-            // Revert the plan display to the current state (before editing)
-            displayPlan(currentPlan);
-            showStatus('📋 Edit cancelled. Plan is restored.', 'loading');
-        }
-        
-        function saveEdits() {
+        async function approvePlan() {
+            if(!currentPlan) return;
+
+            document.getElementById('spinner-build').style.display = 'block';
+
             try {
-                // Create a new array for updated sections
-                const updatedSections = [];
+                const res = await fetch('/api/execute', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ plan_id: currentPlan.plan_id })
+                });
+
+                if(!res.ok) throw new Error(await res.text());
+                const data = await res.json();
+                reportId = data.report_id;
                 
-                // Loop through current sections
-                for (let idx = 0; idx < currentPlan.sections.length; idx++) {
-                    const section = currentPlan.sections[idx];
-                    
-                    // Check if section still exists in DOM (not deleted)
-                    const titleInput = document.getElementById(`section_${idx}_title`);
-                    if (!titleInput) {
-                        // Section was deleted, skip it
-                        continue;
-                    }
-                    
-                    // Update section details
-                    section.section_title = titleInput.value.trim();
-                    section.section_purpose = document.getElementById(`section_${idx}_purpose`).value.trim();
-                    section.visualization_hint = document.getElementById(`section_${idx}_viz`).value;
-                    
-                    // Update queries for this section
-                    const updatedQueries = [];
-                    for (let qIdx = 0; qIdx < section.search_queries.length; qIdx++) {
-                        const queryInput = document.getElementById(`query_${idx}_${qIdx}`);
-                        const purposeInput = document.getElementById(`query_purpose_${idx}_${qIdx}`);
-                        const sourceInput = document.getElementById(`query_source_${idx}_${qIdx}`);
-                        
-                        if (queryInput && purposeInput && sourceInput) {
-                            updatedQueries.push({
-                                query: queryInput.value.trim(),
-                                purpose: purposeInput.value.trim(),
-                                expected_source_type: sourceInput.value
-                            });
-                        }
-                    }
-                    
-                    // Validate: must have at least one query
-                    if (updatedQueries.length === 0) {
-                        throw new Error(`Section "${section.section_title}" must have at least one search query.`);
-                    }
-                    
-                    // Validate: fields must not be empty
-                    if (!section.section_title || !section.section_purpose) {
-                        throw new Error('Section title and purpose cannot be empty.');
-                    }
-                    
-                    section.search_queries = updatedQueries;
-                    updatedSections.push(section);
-                }
+                showToast('Presentation Generated!');
                 
-                // Validate: must have at least one section
-                if (updatedSections.length === 0) {
-                    throw new Error('Plan must have at least one section.');
-                }
+                // Enable Editor & Download
+                document.getElementById('nav-editor').style.opacity = '1';
+                document.getElementById('nav-editor').style.pointerEvents = 'auto';
+                document.getElementById('nav-download').style.opacity = '1';
+                document.getElementById('nav-download').style.pointerEvents = 'auto';
                 
-                // Update the plan with cleaned sections
-                currentPlan.sections = updatedSections;
-                currentPlan.total_queries = currentPlan.sections.reduce(
-                    (sum, section) => sum + section.search_queries.length, 
-                    0
-                );
-                
-                planSectionsCollapsed = true;
-        
-                // Refresh the display (it will use the collapsed state)
-                displayPlan(currentPlan);
-                
-                showStatus('✅ Changes saved! Review and approve to generate report.', 'success');
-                
-            } catch (error) {
-                showStatus('❌ Error saving changes: ' + error.message, 'error');
-                console.error('Save error:', error);
+                loadEditorContent();
+                switchTab('editor');
+
+            } catch(e) {
+                showToast('Execution error: ' + e.message, 'error');
+            } finally {
+                document.getElementById('spinner-build').style.display = 'none';
             }
         }
-        
-        function download(format) {
-            if (!reportId) {
-                showStatus('❌ No report available to download', 'error');
-                return;
+
+        // --- PHASE 3: Editor ---
+
+        async function loadEditorContent() {
+            try {
+                const res = await fetch(`/api/report/${reportId}/content`);
+                const data = await res.json();
+                executionLog = data.execution_log;
+                renderEditor();
+            } catch(e) {
+                console.error(e);
             }
-            
-            showStatus(`📥 Preparing ${format.toUpperCase()} download...`, 'loading');
-            
-            fetch(`/api/download/${reportId}?format=${format}`)
-            .then(response => {
-                if (!response.ok) throw new Error('Download failed');
+        }
+
+        function renderEditor() {
+            const container = document.getElementById('editor-slides-container');
+            container.innerHTML = executionLog.map((slide, idx) => {
+                if(slide.status === 'failed') return '';
                 
-                if (format === 'json') {
-                    return response.json().then(data => {
-                        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `report_${reportId}.json`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                    });
-                } else {
-                    return response.blob().then(blob => {
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `report_${reportId}.pptx`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                    });
+                // Find content placeholders based on active role
+                let contentHtml = '';
+                const mainPh = slide.placeholders.find(p => ['content', 'bullets', 'chart', 'table', 'kpi'].includes(p.role));
+                
+                if (mainPh) {
+                    if (mainPh.role === 'chart') {
+                        contentHtml = `<div class="p-4 bg-blue-50 text-blue-700 rounded text-center"><i class="fa-solid fa-chart-simple text-3xl mb-2"></i><br>Chart: ${mainPh.chart_data?.title || 'Data Visualization'}</div>`;
+                    } else if (mainPh.role === 'table') {
+                        contentHtml = `<div class="p-4 bg-green-50 text-green-700 rounded text-center"><i class="fa-solid fa-table text-3xl mb-2"></i><br>Table Data</div>`;
+                    } else if (mainPh.role === 'kpi') {
+                        contentHtml = `<div class="text-center"><div class="text-4xl font-bold text-blue-600">${mainPh.kpi_data?.value || '0'}</div><div class="text-gray-500">${mainPh.kpi_data?.label || 'Metric'}</div></div>`;
+                    } else {
+                        const bullets = mainPh.bullets || [];
+                        contentHtml = `<ul class="list-disc pl-5 space-y-1 text-gray-600" data-field="bullets" data-slide="${idx}">` +
+                                      bullets.map(b => `<li contenteditable="true" class="mb-1 p-1 hover:bg-gray-50 border border-transparent hover:border-gray-200 rounded">${b}</li>`).join('') +
+                                      `</ul>`;
+                    }
                 }
-            })
-            .then(() => {
-                showStatus(`✅ ${format.toUpperCase()} downloaded successfully!`, 'success');
-            })
-            .catch(error => {
-                showStatus(`❌ Download failed: ${error.message}`, 'error');
+
+                return `
+                <div class="slide-preview cursor-pointer ${idx === selectedSlideIndex ? 'selected-slide' : ''}"
+                     id="slide-editor-${idx}" onclick="selectSlide(${idx})">
+                    <div class="slide-preview-header flex justify-between items-center">
+                        <div class="font-bold text-gray-700">Slide ${slide.slide}: ${slide.title}</div>
+                        <div class="text-xs text-gray-400">Layout: ${slide.layout_type}</div>
+                    </div>
+                    <div class="slide-preview-body">
+                        <h1 contenteditable="true" class="text-2xl font-bold text-gray-800 mb-4 p-1 hover:bg-gray-50 border border-transparent hover:border-gray-200 rounded" data-field="title" data-slide="${idx}">${slide.title}</h1>
+                        ${contentHtml}
+                    </div>
+                    <div class="slide-preview-footer">
+                        <span class="text-xs text-gray-400">ID: ${reportId}</span>
+                        ${idx === selectedSlideIndex ? '<span class="text-xs font-bold text-blue-600">Selected for Chat</span>' : ''}
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        function selectSlide(idx) {
+            selectedSlideIndex = idx;
+            renderEditor();
+            document.getElementById('slide-editor-' + idx).scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        async function saveContent() {
+            // Scrape content from DOM
+            const updatedLog = JSON.parse(JSON.stringify(executionLog)); // Deep copy
+            
+            updatedLog.forEach((slide, idx) => {
+                const dom = document.getElementById(`slide-editor-${idx}`);
+                if(!dom) return;
+                
+                // Update Title
+                const titleEl = dom.querySelector('[data-field="title"]');
+                if(titleEl) slide.title = titleEl.innerText;
+                
+                // Update Bullets
+                const bulletsContainer = dom.querySelector('[data-field="bullets"]');
+                if(bulletsContainer) {
+                    const bullets = Array.from(bulletsContainer.querySelectorAll('li')).map(li => li.innerText);
+
+                    // Update in placeholders structure
+                    const ph = slide.placeholders.find(p => p.role === 'content' || p.role === 'bullets');
+                    if(ph) ph.bullets = bullets;
+                }
             });
+            
+            try {
+                const res = await fetch(`/api/report/${reportId}/update`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ execution_log: updatedLog })
+                });
+                if(res.ok) showToast('Content Saved & PPT Updated', 'success');
+                else throw new Error('Save failed');
+            } catch(e) {
+                showToast(e.message, 'error');
+            }
         }
+
+        // --- PHASE 4: Chat ---
+
+        async function sendChat() {
+            const input = document.getElementById('chat-input');
+            const msg = input.value.trim();
+            if(!msg) return;
+
+            // Add User Message
+            const chatBox = document.getElementById('chat-messages');
+            chatBox.innerHTML += `<div class="message user">${msg}</div>`;
+            input.value = '';
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            try {
+                const res = await fetch(`/api/report/${reportId}/chat`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        message: msg,
+                        slide_index: selectedSlideIndex
+                    })
+                });
+                const data = await res.json();
+                
+                // Add AI Message
+                chatBox.innerHTML += `<div class="message ai">${data.message}</div>`;
+                chatBox.scrollTop = chatBox.scrollHeight;
+                
+                // Update specific slide content in the log and re-render
+                if (data.updated_slide) {
+                    executionLog[selectedSlideIndex] = data.updated_slide;
+                    renderEditor();
+                }
+                
+            } catch(e) {
+                chatBox.innerHTML += `<div class="message ai text-red-500">Error: ${e.message}</div>`;
+            }
+        }
+
+        // --- PHASE 5: Download ---
+
+        function downloadFile(format) {
+            window.location.href = `/api/download/${reportId}?format=${format}`;
+        }
+
     </script>
 </body>
 </html>

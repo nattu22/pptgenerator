@@ -278,11 +278,18 @@ class ExecutionOrchestrator:
                     )
                     return (ph_id, {'type': 'kpi', 'kpi_data': kpi})
                 else:
+                    max_bullets = self._calculate_max_bullets(ph_info.get('area', 5))
+                    max_words = self._calculate_word_limit(
+                        ph_info.get('width', 5),
+                        ph_info.get('height', 5),
+                        max_bullets
+                    )
                     bullets = self.content_generator.generate_bullets(
                         section.section_title,
                         section.section_purpose,
                         relevant_facts,
-                        max_bullets=self._calculate_max_bullets(ph_info.get('area', 5))
+                        max_bullets=max_bullets,
+                        max_words_per_bullet=max_words
                     )
                     return (ph_id, {'type': 'bullets', 'bullets': bullets})
             except Exception as e:
@@ -457,9 +464,221 @@ class ExecutionOrchestrator:
                     'error': str(e)
                 })
         
+        # 7. ADD SPEAKER NOTES (NEW)
+        try:
+            # Collect bullets and facts for context
+            bullets_context = []
+            facts_context = []
+
+            for ph_log in slide_log['placeholders']:
+                if 'bullets' in ph_log:
+                    bullets_context.extend(ph_log['bullets'])
+
+            # Simple fact extraction from search results
+            for res_list in search_results.values():
+                facts_context.extend(res_list[:2])
+
+            speaker_notes = self.content_generator.generate_speaker_notes(
+                section.section_title,
+                bullets_context,
+                facts_context
+            )
+
+            if slide.has_notes_slide:
+                notes_slide = slide.notes_slide
+                notes_slide.notes_text_frame.text = speaker_notes
+                logger.info("    ✓ Speaker notes added")
+
+        except Exception as e:
+            logger.warning(f"    ⚠️ Failed to add speaker notes: {e}")
+
         logger.info(f"  ✅ Complete")
         return slide_log
-    
+
+    def generate_presentation_from_log(self, execution_log: List[Dict], output_path: pathlib.Path) -> pathlib.Path:
+        """
+        Regenerate presentation from a modified execution log (Manual Edit Mode)
+        """
+        logger.info("🔄 Regenerating presentation from execution log...")
+
+        # Clear existing slides (keep master)
+        slide_ids = [slide.slide_id for slide in self.presentation.slides]
+        for slide_id in slide_ids:
+            rId = self.presentation.slides._sldIdLst[0].rId
+            self.presentation.part.drop_rel(rId)
+            del self.presentation.slides._sldIdLst[0]
+
+        # Add Title Slide (if not in log, assume standard title)
+        # Note: In a real scenario, title slide info should be in the log or separate metadata
+        # For now, we assume the first slide in log is content slide 1.
+        self._add_title_slide("Regenerated Presentation")
+
+        # Recreate slides
+        for slide_data in execution_log:
+            try:
+                if slide_data.get('status') == 'failed':
+                    continue
+
+                layout_idx = int(slide_data.get('layout_idx', 1))
+                layout = self.presentation.slide_layouts[layout_idx]
+                slide = self.presentation.slides.add_slide(layout)
+
+                # Set Title
+                if slide.shapes.title:
+                    slide.shapes.title.text = slide_data.get('title', '')
+
+                # Fill Placeholders
+                for ph_data in slide_data.get('placeholders', []):
+                    self._fill_placeholder_from_data(slide, ph_data)
+
+            except Exception as e:
+                logger.error(f"Failed to recreate slide {slide_data.get('slide')}: {e}")
+
+        # Add Thank You
+        self._add_thank_you_slide()
+
+        self.presentation.save(output_path)
+        logger.info(f"✅ Saved updated presentation: {output_path}")
+        return output_path
+
+    def _fill_placeholder_from_data(self, slide, ph_data: Dict):
+        """Fill a placeholder using explicit data from log"""
+        try:
+            ph_id = int(ph_data['id'])
+            role = ph_data.get('role', 'content')
+
+            # Find placeholder
+            try:
+                placeholder = slide.placeholders[ph_id]
+            except KeyError:
+                logger.warning(f"Placeholder {ph_id} not found for role {role}")
+                return
+
+            if role == 'subtitle':
+                if 'content' in ph_data:
+                    placeholder.text = ph_data['content']
+
+            elif role == 'content' or role == 'bullets':
+                if 'bullets' in ph_data:
+                    text_frame = placeholder.text_frame
+                    text_frame.clear()
+                    for idx, bullet in enumerate(ph_data['bullets']):
+                        if idx == 0:
+                            p = text_frame.paragraphs[0]
+                        else:
+                            p = text_frame.add_paragraph()
+                        p.text = bullet
+                        p.level = 0
+
+            elif role == 'chart':
+                if 'chart_data' in ph_data:
+                    self._insert_chart_from_data(slide, placeholder, ph_id, ph_data['chart_data'])
+
+            elif role == 'table':
+                if 'table_data' in ph_data:
+                    self._insert_table_from_data(slide, placeholder, ph_id, ph_data['table_data'])
+
+            elif role == 'kpi':
+                if 'kpi_data' in ph_data:
+                    text_frame = placeholder.text_frame
+                    text_frame.clear()
+
+                    p = text_frame.paragraphs[0]
+                    run = p.add_run()
+                    run.text = ph_data['kpi_data'].get('value', '')
+                    run.font.bold = True
+                    run.font.size = Pt(32) # Default large
+
+                    p = text_frame.add_paragraph()
+                    run = p.add_run()
+                    run.text = ph_data['kpi_data'].get('label', '')
+                    run.font.size = Pt(14)
+
+        except Exception as e:
+            logger.error(f"Error filling placeholder {ph_data.get('id')}: {e}")
+
+    def regenerate_slide_content(self, slide_data: Dict, instruction: str) -> Dict:
+        """
+        Regenerate content for a single slide based on user instruction
+        """
+        logger.info(f"🔄 Regenerating slide {slide_data.get('slide')} with instruction: {instruction}")
+
+        # 1. Analyze instruction to determine content type
+        content_type = "bullets"
+        if "chart" in instruction.lower():
+            content_type = "chart"
+        elif "table" in instruction.lower():
+            content_type = "table"
+        elif "kpi" in instruction.lower():
+            content_type = "kpi"
+
+        # 2. Generate new content
+        # Find main content placeholder
+        content_ph = None
+        for ph in slide_data.get('placeholders', []):
+            if ph.get('role') in ['content', 'bullets', 'chart', 'table', 'kpi']:
+                content_ph = ph
+                break
+
+        if not content_ph:
+            logger.warning("No content placeholder found to regenerate")
+            return slide_data
+
+        # Update role
+        content_ph['role'] = content_type
+
+        # Clear old data
+        content_ph.pop('bullets', None)
+        content_ph.pop('chart_data', None)
+        content_ph.pop('table_data', None)
+        content_ph.pop('kpi_data', None)
+
+        try:
+            if content_type == 'chart':
+                chart_data = self.content_generator.generate_chart(
+                    slide_data.get('title', 'Slide'),
+                    instruction,
+                    [], # facts (could pass existing)
+                    chart_type='column'
+                )
+                content_ph['chart_data'] = chart_data
+
+            elif content_type == 'table':
+                table_data = self.content_generator.generate_table(
+                    slide_data.get('title', 'Slide'),
+                    instruction,
+                    []
+                )
+                content_ph['table_data'] = table_data
+
+            elif content_type == 'kpi':
+                kpi_data = self.content_generator.generate_kpi(
+                    slide_data.get('title', 'Slide'),
+                    instruction
+                )
+                content_ph['kpi_data'] = kpi_data
+
+            else: # bullets
+                # Estimate dimensions if available, else default
+                width = content_ph.get('width', 5)
+                height = content_ph.get('height', 5)
+                max_bullets = self._calculate_max_bullets(width * height)
+                max_words = self._calculate_word_limit(width, height, max_bullets)
+
+                bullets = self.content_generator.generate_bullets(
+                    slide_data.get('title', 'Slide'),
+                    instruction, # use instruction as context
+                    [],
+                    max_bullets=max_bullets,
+                    max_words_per_bullet=max_words
+                )
+                content_ph['bullets'] = bullets
+
+        except Exception as e:
+            logger.error(f"Failed to regenerate content: {e}")
+
+        return slide_data
+
     def _analyze_layout_placeholders(self, slide, layout_idx: int) -> Dict:
         """Existing logic - unchanged"""
         
@@ -1037,13 +1256,19 @@ class ExecutionOrchestrator:
                 if query.query in search_results:
                     relevant_facts.extend(search_results[query.query])
         
-        max_bullets = self._calculate_max_bullets(ph_info['area'])
+        max_bullets = self._calculate_max_bullets(ph_info.get('area', 5))
+        max_words = self._calculate_word_limit(
+            ph_info.get('width', 0),
+            ph_info.get('height', 0),
+            max_bullets
+        )
         
         bullets = self.content_generator.generate_bullets(
             section.section_title,
             section.section_purpose,
             relevant_facts,
-            max_bullets=max_bullets
+            max_bullets=max_bullets,
+            max_words_per_bullet=max_words
         )
         
         text_frame = placeholder.text_frame
@@ -1089,6 +1314,21 @@ class ExecutionOrchestrator:
         else:
             return 10
     
+    def _calculate_word_limit(self, width: float, height: float, max_bullets: int) -> int:
+        """Calculate max words per bullet to fit in placeholder"""
+        if height <= 0 or width <= 0 or max_bullets <= 0:
+            return 15
+
+        # Estimate based on standard 18pt font (~0.3 inch line height)
+        lines_available = height / 0.3
+        lines_per_bullet = lines_available / max_bullets
+
+        # Estimate words per line (width * 8 chars/inch / 6 chars/word)
+        words_per_line = (width * 8) / 6
+
+        limit = int(lines_per_bullet * words_per_line)
+        return max(5, min(limit, 40))  # Clamp between 5 and 40
+
     def _calculate_font_size_from_area(self, area: float, size_type: str) -> int:
         """FIX #4: Calculate from template base size"""
         from pptx.util import Pt
