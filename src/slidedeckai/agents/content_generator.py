@@ -61,9 +61,10 @@ Return ONLY the subtitle text, nothing else."""
             return "Analysis"
     
     def generate_bullets(self, slide_title: str, purpose: str,
-                        search_facts: List[str], max_bullets: int = 5) -> List[str]:
+                        search_facts: List[str], max_bullets: int = 5,
+                        max_words_per_bullet: int = 15) -> List[str]:
         """
-        Generate bullet points from search facts
+        Generate bullet points from search facts with strict length control
         """
         
         facts_text = "\n".join(search_facts) if search_facts else "No data available"
@@ -78,7 +79,7 @@ Available Data:
 
 Requirements:
 - Generate EXACTLY {max_bullets} bullet points
-- Each bullet: 10-20 words
+- Each bullet MUST be under {max_words_per_bullet} words to fit layout
 - Include QUANTITATIVE data (numbers, percentages)
 - Professional, executive-level tone
 - NO preamble, ONLY bullet points
@@ -260,3 +261,49 @@ Return ONLY valid JSON:
         except Exception as e:
             logger.error(f"KPI generation failed: {e}")
             return {"value": "N/A", "label": slide_title[:20]}
+
+    def generate_speaker_notes(self, slide_title: str, bullets: List[str], key_facts: List[str]) -> str:
+        """
+        Generate conversational speaker notes
+        """
+
+        bullet_text = "\n- ".join(bullets) if bullets else "N/A"
+        fact_text = "\n- ".join(key_facts[:3]) if key_facts else "N/A"
+
+        prompt = f"""Generate speaker notes for this slide:
+
+Title: {slide_title}
+
+Visual Content:
+- {bullet_text}
+
+Supporting Data:
+- {fact_text}
+
+Requirements:
+- Conversational tone ("Welcome to this slide...", "Here we see...")
+- Explain the key points, don't just read them
+- Add a transition sentence to the next topic if applicable
+- Keep it under 150 words
+- Professional and engaging
+
+Return ONLY the speaker notes text."""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "Generate professional speaker notes."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=250
+            )
+
+            notes = response.choices[0].message.content.strip()
+            logger.info(f"        ✓ Speaker notes generated")
+            return notes
+
+        except Exception as e:
+            logger.error(f"Speaker notes generation failed: {e}")
+            return f"Speaker notes for {slide_title}: Please cover the key points listed on the slide."

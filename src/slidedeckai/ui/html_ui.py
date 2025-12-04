@@ -64,6 +64,32 @@ HTML_UI = """
             border-color: #2563eb;
             background: #eff6ff;
         }
+        .report-type-section {
+            margin: 25px 0;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 2px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #6b7280;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -4px;
+            transition: all 0.2s;
+        }
+        .tab:hover {
+            color: #2563eb;
+        }
+        .tab.active {
+            color: #2563eb;
+            border-bottom: 2px solid #2563eb;
+        }
         .input-group {
             margin: 20px 0;
         }
@@ -229,6 +255,19 @@ HTML_UI = """
                 </div>
             </div>
         </div>
+
+        <div class="report-type-section">
+            <div class="mode-label">Report Type</div>
+            <div class="tabs">
+                <div class="tab active" onclick="selectReportType('sales', this)">🚀 Sales Pitch</div>
+                <div class="tab" onclick="selectReportType('executive', this)">👔 Executive</div>
+                <div class="tab" onclick="selectReportType('professional', this)">💼 Professional</div>
+                <div class="tab" onclick="selectReportType('report', this)">📊 Report</div>
+            </div>
+            <div id="type-description" style="color: #6b7280; font-size: 0.9em; margin-top: 5px;">
+                Focus on value proposition, customer benefits, and call to action.
+            </div>
+        </div>
         
         <div class="input-group">
             <label>Template Style</label>
@@ -280,10 +319,25 @@ HTML_UI = """
     
     <script>
         let selectedMode = 'normal';
+        let selectedReportType = 'sales';
         let currentPlan = null;
         let reportId = null;
         let templateOptions = {};
         let planSectionsCollapsed = false;
+
+        const reportTypeDescriptions = {
+            'sales': 'Focus on value proposition, customer benefits, and call to action.',
+            'executive': 'High-level strategy, key metrics, and critical decisions.',
+            'professional': 'Industry standards, best practices, and methodology.',
+            'report': 'Comprehensive coverage, detailed data, and structured findings.'
+        };
+
+        function selectReportType(type, element) {
+            selectedReportType = type;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            element.classList.add('active');
+            document.getElementById('type-description').textContent = reportTypeDescriptions[type];
+        }
         
         // Function to load templates from the backend
         async function loadTemplates() {
@@ -375,7 +429,7 @@ HTML_UI = """
             
             try {
                 console.log('🚀 Sending request to /api/plan');
-                console.log('📤 Request data:', { query, search_mode: selectedMode, template });
+                console.log('📤 Request data:', { query, search_mode: selectedMode, report_type: selectedReportType, template });
                 
                 const response = await fetch('/api/plan', {
                     method: 'POST',
@@ -383,6 +437,7 @@ HTML_UI = """
                     body: JSON.stringify({ 
                         query, 
                         search_mode: selectedMode,
+                        report_type: selectedReportType,
                         template: template
                     })
                 });
