@@ -367,12 +367,27 @@ class ExecutionOrchestrator:
                     'section_purpose': getattr(section, 'section_purpose', ''),
                     'bullet_points': []
                 }
+
+                # FIX #1: Enrich slide_json with content types for matcher
+                enforced = getattr(section, 'enforced_content_type', 'bullets')
+                if 'chart' in enforced:
+                    slide_json['chart'] = True
+                elif 'table' in enforced:
+                    slide_json['table'] = True
+
                 # Populate bullets from placeholder_specs descriptions when available
                 for spec in getattr(section, 'placeholder_specs', []) or []:
                     try:
                         desc = getattr(spec, 'content_description', None) or getattr(spec, 'content_type', None)
                         if desc:
                             slide_json['bullet_points'].append(str(desc))
+
+                        # Enrich specific items if spec has content_type info
+                        ctype = getattr(spec, 'content_type', '')
+                        if 'chart' in ctype:
+                            slide_json['chart'] = True
+                        elif 'table' in ctype:
+                            slide_json['table'] = True
                     except Exception:
                         continue
 
@@ -394,6 +409,29 @@ class ExecutionOrchestrator:
                         logger.debug(f"ContentLayoutMatcher mapping failed: {e}")
         except Exception:
             pass
+
+        # FIX: Override placeholder roles from Plan specs (connects core_agents decisions to execution)
+        if getattr(section, 'placeholder_specs', None):
+            for spec in section.placeholder_specs:
+                try:
+                    pid = getattr(spec, 'placeholder_idx', None)
+                    ctype = getattr(spec, 'content_type', None)
+
+                    if pid is not None and ctype:
+                        # Normalize role
+                        new_role = None
+                        if 'kpi' in ctype: new_role = 'kpi'
+                        elif 'chart' in ctype: new_role = 'chart'
+                        elif 'table' in ctype: new_role = 'table'
+                        elif 'bullets' in ctype: new_role = 'content'
+
+                        if new_role and pid in placeholder_map:
+                            current_role = placeholder_map[pid].get('role')
+                            if current_role != new_role:
+                                placeholder_map[pid]['role'] = new_role
+                                logger.info(f"    → Role override from Plan for ph {pid}: {current_role} -> {new_role}")
+                except Exception:
+                    pass
 
         # PREPARE content for placeholders in parallel (only text/chart/table data generation)
         prepared_content = self._prepare_section_content(section, placeholder_map, search_results)
@@ -622,7 +660,12 @@ class ExecutionOrchestrator:
                             base_pt = 18
                         run.font.size = Pt(base_pt * 0.8)
                     except Exception:
-                        run.font.size = Pt(14)  # fallback
+                        # FIX #5: Soft fallback based on template
+                        try:
+                            base = self.template_properties.get('default_fonts', {}).get('size', Pt(18)).pt
+                            run.font.size = Pt(base * 0.8)
+                        except:
+                            run.font.size = Pt(14)
         except Exception as e:
             logger.debug(f"Font application failed: {e}")
         
@@ -1046,6 +1089,16 @@ class ExecutionOrchestrator:
             max_bullets=max_bullets
         )
         
+        # FIX #4: Text overflow validation
+        if self._check_text_overflow(bullets, ph_info['area'], ph_info.get('width', 0), ph_info.get('height', 0)):
+            logger.warning(f"      ⚠️ Overflow detected, regenerating shorter bullets...")
+            bullets = self.content_generator.generate_bullets(
+                section.section_title,
+                section.section_purpose,
+                relevant_facts,
+                max_bullets=max(3, max_bullets - 2)  # Reduce count
+            )
+
         text_frame = placeholder.text_frame
         text_frame.clear()
         
@@ -1078,6 +1131,46 @@ class ExecutionOrchestrator:
             'status': 'filled'
         }
     
+    def _check_text_overflow(self, bullets: List[str], area: float,
+                             width_inches: float = 0, height_inches: float = 0) -> bool:
+        """FIX #4: Validate if text fits in placeholder using precise metrics"""
+        # If dimensions not provided, fall back to area heuristic
+        if width_inches <= 0 or height_inches <= 0:
+            total_chars = sum(len(b) for b in bullets)
+            capacity = area * 50
+            if total_chars > capacity:
+                logger.info(f"      Overflow check (area): {total_chars} > {capacity:.0f}")
+                return True
+            return False
+
+        # Precise calculation
+        # Assumptions for Calibri 18pt (typical body text)
+        font_points = 18
+        # Avg char width approx 0.5 * font_size for variable width font
+        char_width_inch = (font_points * 0.5) / 72.0
+        line_height_inch = (font_points * 1.2) / 72.0
+
+        available_lines = int(height_inches / line_height_inch)
+        chars_per_line = int(width_inches / char_width_inch)
+
+        if chars_per_line <= 0:
+            chars_per_line = 1
+
+        used_lines = 0
+        for b in bullets:
+            # Bullet char + indentation
+            b_len = len(b) + 4
+            lines = (b_len / chars_per_line) + 1  # Simplified wrapping
+            used_lines += lines
+            # Paragraph spacing
+            used_lines += 0.2 # extra space between bullets
+
+        if used_lines > available_lines:
+            logger.info(f"      Overflow check (dim): {used_lines:.1f} lines > {available_lines} available")
+            return True
+
+        return False
+
     def _calculate_max_bullets(self, area: float) -> int:
         """Existing logic - unchanged"""
         if area < 3:

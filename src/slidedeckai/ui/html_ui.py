@@ -232,9 +232,22 @@ HTML_UI = """
         
         <div class="input-group">
             <label>Template Style</label>
-            <select id="template">
-                <option value="">Loading templates...</option>
-            </select>
+            <div style="display: flex; gap: 10px;">
+                <select id="template" style="flex: 1;">
+                    <option value="">Loading templates...</option>
+                </select>
+                <button onclick="document.getElementById('fileUpload').click()"
+                        style="background: #6b7280; color: white; border: none; padding: 0 15px; border-radius: 8px; cursor: pointer;">
+                    📂 Upload
+                </button>
+                <input type="file" id="fileUpload" style="display: none;" accept=".pptx" onchange="uploadTemplate(this)">
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label>Number of Slides (Optional)</label>
+            <input type="number" id="num_slides" placeholder="Auto-detect based on query" min="1" max="20"
+                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 16px;">
         </div>
         
         <div class="input-group">
@@ -360,6 +373,33 @@ HTML_UI = """
             status.className = 'status show ' + type;
         }
         
+        async function uploadTemplate(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            showStatus('📤 Uploading template...', 'loading');
+
+            try {
+                const response = await fetch('/api/upload_template', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) throw new Error(result.error);
+
+                showStatus(`✅ Template "${result.template}" uploaded!`, 'success');
+                loadTemplates(); // Refresh list
+
+            } catch (error) {
+                showStatus('❌ Upload failed: ' + error.message, 'error');
+            }
+        }
+
         async function generatePlan() {
             const query = document.getElementById('query').value.trim();
             if (!query) {
@@ -368,6 +408,8 @@ HTML_UI = """
             }
             
             const template = document.getElementById('template').value;
+            const numSlides = document.getElementById('num_slides').value;
+            const numSections = numSlides ? parseInt(numSlides) : null;
             
             document.getElementById('spinner').classList.add('show');
             document.getElementById('planReview').classList.remove('show');
@@ -375,7 +417,7 @@ HTML_UI = """
             
             try {
                 console.log('🚀 Sending request to /api/plan');
-                console.log('📤 Request data:', { query, search_mode: selectedMode, template });
+                console.log('📤 Request data:', { query, search_mode: selectedMode, template, num_sections: numSections });
                 
                 const response = await fetch('/api/plan', {
                     method: 'POST',
@@ -383,7 +425,8 @@ HTML_UI = """
                     body: JSON.stringify({ 
                         query, 
                         search_mode: selectedMode,
-                        template: template
+                        template: template,
+                        num_sections: numSections
                     })
                 });
                 

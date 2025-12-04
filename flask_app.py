@@ -11,6 +11,7 @@ from typing import Dict, Any
 import json
 
 from flask import Flask, request, jsonify, send_file, render_template_string
+from werkzeug.utils import secure_filename
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -334,6 +335,42 @@ def get_templates():
         
     except Exception as e:
         logger.error(f"Template listing failed: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/upload_template', methods=['POST'])
+def upload_template():
+    """Upload a new PPTX template"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+
+        if file and file.filename.endswith('.pptx'):
+            filename = secure_filename(file.filename)
+            template_dir = pathlib.Path('src/slidedeckai/pptx_templates')
+            template_dir.mkdir(parents=True, exist_ok=True)
+
+            save_path = template_dir / filename
+            file.save(save_path)
+
+            # Register in GlobalConfig
+            template_name = filename.replace('.pptx', '').replace('_', ' ').title()
+            GlobalConfig.PPTX_TEMPLATE_FILES[template_name] = {
+                'file': save_path,
+                'caption': 'Uploaded Template'
+            }
+
+            logger.info(f"✅ Template uploaded: {template_name}")
+            return jsonify({'success': True, 'template': template_name})
+
+        return jsonify({'error': 'Invalid file type'}), 400
+
+    except Exception as e:
+        logger.error(f"Upload failed: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
