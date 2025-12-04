@@ -1,0 +1,228 @@
+{
+    "title": "Global Electric Vehicle Market Trends and Competitive Landscape 2024",
+    "slides": [
+        {
+            "heading": "Introduction to the Global Electric Vehicle (EV) Market",
+            "bullet_points": [
+                "Rapid growth driven by environmental concerns and government policies",
+                [
+                    "Increasing consumer awareness about climate change",
+                    "Stringent emission regulations worldwide"
+                ],
+                "Technological advancements improving EV affordability and performance",
+                "Key players expanding product portfolios and market reach"
+            ],
+            "key_message": "The global EV market is experiencing unprecedented growth fueled by policy support, technology, and consumer demand.",
+            "img_keywords": "electric vehicles, global market, growth, technology, environment"
+        },
+        {
+            "heading": "Market Size and Growth Projections for 2024",
+            "bullet_points": [
+                "Global EV sales expected to exceed 10 million units in 2024",
+                "Annual growth rate projected at around 40% compared to 2023",
+                "China, Europe, and the US remain the largest markets",
+                "Battery cost reductions and charging infrastructure expansion are key enablers"
+            ],
+            "key_message": "The EV market is growing rapidly with strong sales momentum and expanding geographic penetration.",
+            "img_keywords": "EV sales, market growth, projections, China, Europe, USA"
+        },
+        {
+            "heading": "Regional Market Shares in 2024",
+            "chart": {
+                "type": "pie",
+                "categories": [
+                    "China",
+                    "Europe",
+                    "USA",
+                    "Rest of World"
+                ],
+                "series": [
+                    {
+                        "name": "Market Share",
+                        "values": [
+                            45,
+                            30,
+                            15,
+                            10
+                        ]
+                    }
+                ]
+            },
+            "key_message": "China dominates the EV market with 45% share, followed by Europe and the USA.",
+            "img_keywords": ""
+        },
+        {
+            "heading": "Top Electric Vehicle Manufacturers in 2024",
+            "table": {
+                "headers": [
+                    "Manufacturer",
+                    "Global EV Sales (millions)",
+                    "Market Share (%)",
+                    "Key Models"
+                ],
+                "rows": [
+                    [
+                        "Tesla",
+                        "2.1",
+                        "21%",
+                        "Model 3, Model Y"
+                    ],
+                    [
+                        "BYD",
+                        "1.5",
+                        "15%",
+                        "Han, Tang"
+                    ],
+                    [
+                        "Volkswagen Group",
+                        "1.2",
+                        "12%",
+                        "ID.3, ID.4"
+                    ],
+                    [
+                        "Hyundai-Kia",
+                        "0.8",
+                        "8%",
+                        "Ioniq 5, EV6"
+                    ],
+                    [
+                        "SAIC Motor",
+                        "0.7",
+                        "7%",
+                        "MG ZS EV, Roewe"
+                    ]
+                ]
+            },
+            "key_message": "",
+            "img_keywords": "EV manufacturers, Tesla, BYD, Volkswagen, Hyundai, SAIC"
+        },
+        {
+            "heading": "Key Market Trends Shaping the EV Industry",
+            "bullet_points": [
+                ">> Expansion of charging infrastructure globally to reduce range anxiety",
+                ">> Battery technology improvements leading to longer range and faster charging",
+                ">> Increasing government incentives and stricter emission regulations",
+                ">> Growing consumer preference for SUVs and crossovers in EV segment",
+                ">> Integration of smart and autonomous driving features"
+            ],
+            "key_message": "Multiple converging trends are accelerating EV adoption and transforming the automotive landscape.",
+            "img_keywords": "charging stations, battery technology, government incentives, EV SUVs, autonomous vehicles"
+        },
+        {
+            "heading": "Battery Technology and Cost Trends",
+            "chart": {
+                "type": "line",
+                "categories": [
+                    "2018",
+                    "2019",
+                    "2020",
+                    "2021",
+                    "2022",
+                    "2023",
+                    "2024"
+                ],
+                "series": [
+                    {
+                        "name": "Battery Pack Cost ($/kWh)",
+                        "values": [
+                            156,
+                            137,
+                            120,
+                            110,
+                            105,
+                            95,
+                            85
+                        ]
+                    }
+                ],
+                "title": "Declining Battery Pack Costs Over Time"
+            },
+            "key_message": "Battery pack costs have dropped by nearly 45% from 2018 to 2024, making EVs more affordable.",
+            "img_keywords": ""
+        },
+        {
+            "heading": "Competitive Strategies of Leading EV Manufacturers",
+            "bullet_points": [
+                "Tesla focuses on vertical integration and software innovation",
+                "BYD leverages strong domestic market and diversified product range",
+                "Volkswagen invests heavily in modular EV platforms and global expansion",
+                "Hyundai-Kia emphasizes design and battery technology partnerships",
+                "SAIC targets affordable EVs and joint ventures with global brands"
+            ],
+            "key_message": "Leading manufacturers adopt distinct strategies to capture market share and drive innovation.",
+            "img_keywords": "Tesla strategy, BYD market, Volkswagen EV platform, Hyundai battery, SAIC joint ventures"
+        },
+        {
+            "heading": "Challenges Facing the EV Market in 2024",
+            "bullet_points": [
+                "Raw material supply constraints for batteries (lithium, cobalt, nickel)",
+                "Charging infrastructure gaps in emerging markets",
+                "High upfront costs compared to internal combustion engine vehicles",
+                "Consumer concerns about battery life and resale value",
+                "Regulatory uncertainties in some regions"
+            ],
+            "key_message": "Despite growth, the EV market faces supply chain, infrastructure, and cost challenges that need addressing.",
+            "img_keywords": "battery raw materials, charging infrastructure, EV cost, consumer concerns, regulations"
+        },
+        {
+            "heading": "EV Market Opportunities and Future Outlook",
+            "bullet_points": [
+                ">> Expansion into emerging markets with tailored affordable models",
+                ">> Advances in solid-state batteries and alternative chemistries",
+                ">> Integration with renewable energy and smart grid systems",
+                ">> Growth in commercial EV segments like delivery vans and buses",
+                ">> Increasing partnerships between automakers and tech companies"
+            ],
+            "key_message": "The EV market holds significant opportunities driven by innovation, new segments, and global expansion.",
+            "img_keywords": "emerging markets, solid-state batteries, renewable energy, commercial EVs, partnerships"
+        },
+        {
+            "heading": "Side-by-Side Comparison: Traditional Automakers vs. New EV Entrants",
+            "bullet_points": [
+                {
+                    "heading": "Traditional Automakers",
+                    "bullet_points": [
+                        "Established manufacturing and distribution networks",
+                        "Experience in mass production and quality control",
+                        "Legacy brand recognition and customer base"
+                    ]
+                },
+                {
+                    "heading": "New EV Entrants",
+                    "bullet_points": [
+                        "Focus on innovation and software-driven vehicles",
+                        "Agile development and direct-to-consumer sales models",
+                        "Strong emphasis on sustainability and new mobility concepts"
+                    ]
+                }
+            ],
+            "key_message": "Traditional automakers leverage scale and experience, while new entrants drive innovation and customer engagement.",
+            "img_keywords": "traditional automakers, new EV companies, innovation, manufacturing, brand"
+        },
+        {
+            "heading": "Icons Illustrating Key Concepts in the EV Market",
+            "bullet_points": [
+                "[[electric-car]] Rapid EV Adoption",
+                "[[battery]] Battery Technology Advances",
+                "[[charging-station]] Charging Infrastructure Expansion",
+                "[[globe]] Global Market Growth",
+                "[[factory]] Manufacturing & Supply Chain",
+                "[[government]] Policy & Incentives"
+            ],
+            "key_message": "",
+            "img_keywords": ""
+        },
+        {
+            "heading": "Conclusion and Key Takeaways",
+            "bullet_points": [
+                "The global EV market is growing rapidly with strong regional leaders and expanding consumer acceptance.",
+                "Battery cost reductions and infrastructure development are critical to sustaining growth.",
+                "Leading manufacturers employ diverse strategies balancing innovation and scale.",
+                "Challenges remain in supply chains, costs, and infrastructure, but opportunities abound in new technologies and markets.",
+                "Stakeholders must collaborate to accelerate EV adoption and achieve sustainability goals."
+            ],
+            "key_message": "The EV market is poised for continued expansion, driven by innovation, policy, and consumer demand, despite existing challenges.",
+            "img_keywords": "EV market summary, growth, challenges, opportunities, sustainability"
+        }
+    ]
+}
