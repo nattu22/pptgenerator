@@ -135,6 +135,7 @@ def create_plan():
         query = data.get('query', '').strip()
         template_key = data.get('template', 'Basic')
         search_mode = data.get('search_mode', 'normal')
+        report_mode = data.get('report_type', 'report')
         num_sections = data.get('num_sections', None)
         
         if not query:
@@ -165,7 +166,8 @@ def create_plan():
         # Use enhanced orchestrator
         orchestrator = PlanGeneratorOrchestrator(
             api_key=api_key,
-            search_mode=search_mode
+            search_mode=search_mode,
+            report_mode=report_mode
         )
         
         # Generate plan with enforced diversity
@@ -256,13 +258,21 @@ def execute_plan():
         
         output_path = orchestrator.execute_plan(research_plan, output_path)
         
+        # Read execution log
+        log_path = str(output_path).replace('.pptx', '.execution.json')
+        execution_log = []
+        if os.path.exists(log_path):
+            with open(log_path, 'r') as f:
+                execution_log = json.load(f)
+
         # Cache results
         report_id = datetime.now().strftime('%Y%m%d_%H%M%S')
         slides_cache[report_id] = {
             'path': output_path,
             'topic': query,
             'template': template_key,
-            'plan_id': plan_id
+            'plan_id': plan_id,
+            'execution_log': execution_log
         }
         
         logger.info(f"✅ Slides generated: {report_id}")
@@ -283,6 +293,122 @@ def execute_plan():
             'traceback': traceback.format_exc()
         }), 500
 
+
+@app.route('/api/report/<report_id>/content', methods=['GET'])
+def get_report_content(report_id):
+    """Get the execution log (content) for editing"""
+    try:
+        if report_id not in slides_cache:
+            return jsonify({'error': 'Report not found'}), 404
+
+        cached = slides_cache[report_id]
+        return jsonify({
+            'report_id': report_id,
+            'execution_log': cached.get('execution_log', [])
+        })
+    except Exception as e:
+        logger.error(f"Content fetch failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/report/<report_id>/update', methods=['POST'])
+def update_report_content(report_id):
+    """Update report content from manual edits and regenerate PPTX"""
+    try:
+        if report_id not in slides_cache:
+            return jsonify({'error': 'Report not found'}), 404
+
+        data = request.get_json()
+        updated_log = data.get('execution_log')
+
+        if not updated_log or not isinstance(updated_log, list):
+            return jsonify({'error': 'Invalid execution log'}), 400
+
+        # Regenerate
+        cached = slides_cache[report_id]
+        template_key = cached['template']
+        api_key = os.getenv('OPENAI_API_KEY')
+
+        # Get template file
+        template_file = GlobalConfig.PPTX_TEMPLATE_FILES[template_key]['file']
+
+        # New output path (to avoid overwrite locking issues if any)
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix='.pptx')
+        output_path = pathlib.Path(temp.name)
+        temp.close()
+
+        orchestrator = ExecutionOrchestrator(
+            api_key=api_key,
+            template_path=template_file
+        )
+
+        # Generate from log
+        output_path = orchestrator.generate_presentation_from_log(updated_log, output_path)
+
+        # Update cache
+        slides_cache[report_id]['path'] = output_path
+        slides_cache[report_id]['execution_log'] = updated_log
+
+        return jsonify({'success': True, 'message': 'Presentation updated'})
+
+    except Exception as e:
+        logger.error(f"Update failed: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/report/<report_id>/chat', methods=['POST'])
+def chat_with_report(report_id):
+    """Chat to modify specific slide content"""
+    try:
+        if report_id not in slides_cache:
+            return jsonify({'error': 'Report not found'}), 404
+
+        cached = slides_cache[report_id]
+        data = request.get_json()
+        message = data.get('message', '')
+        slide_index = data.get('slide_index')
+
+        if slide_index is None:
+            return jsonify({'error': 'Slide selection required for chat'}), 400
+
+        execution_log = cached.get('execution_log', [])
+
+        if slide_index < 0 or slide_index >= len(execution_log):
+            return jsonify({'error': 'Invalid slide index'}), 400
+
+        # Get orchestrator
+        template_key = cached['template']
+        api_key = os.getenv('OPENAI_API_KEY')
+        template_file = GlobalConfig.PPTX_TEMPLATE_FILES[template_key]['file']
+
+        orchestrator = ExecutionOrchestrator(
+            api_key=api_key,
+            template_path=template_file
+        )
+
+        # Regenerate content for target slide
+        target_slide = execution_log[slide_index]
+        updated_slide = orchestrator.regenerate_slide_content(target_slide, message)
+        execution_log[slide_index] = updated_slide
+
+        # Rebuild PPTX
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix='.pptx')
+        output_path = pathlib.Path(temp.name)
+        temp.close()
+
+        output_path = orchestrator.generate_presentation_from_log(execution_log, output_path)
+
+        # Update cache
+        slides_cache[report_id]['path'] = output_path
+        slides_cache[report_id]['execution_log'] = execution_log
+
+        return jsonify({
+            'success': True,
+            'message': 'Slide regenerated',
+            'updated_slide': updated_slide
+        })
+
+    except Exception as e:
+        logger.error(f"Chat failed: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/download/<report_id>')
 def download_report(report_id):
