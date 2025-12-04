@@ -61,9 +61,10 @@ Return ONLY the subtitle text, nothing else."""
             return "Analysis"
     
     def generate_bullets(self, slide_title: str, purpose: str,
-                        search_facts: List[str], max_bullets: int = 5) -> List[str]:
+                        search_facts: List[str], max_bullets: int = 5,
+                        max_words_per_bullet: int = 15) -> List[str]:
         """
-        Generate bullet points from search facts
+        Generate bullet points from search facts with strict length control
         """
         
         facts_text = "\n".join(search_facts) if search_facts else "No data available"
@@ -78,7 +79,7 @@ Available Data:
 
 Requirements:
 - Generate EXACTLY {max_bullets} bullet points
-- Each bullet: 10-20 words
+- Each bullet MUST be under {max_words_per_bullet} words to fit layout
 - Include QUANTITATIVE data (numbers, percentages)
 - Professional, executive-level tone
 - NO preamble, ONLY bullet points
