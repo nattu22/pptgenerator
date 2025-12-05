@@ -1,5 +1,8 @@
 """
 Utility functions to help with text processing.
+
+This module provides helper functions for validating prompts and cleaning/fixing
+JSON strings, which is particularly useful when handling LLM outputs.
 """
 import json_repair as jr
 
@@ -9,10 +12,10 @@ def is_valid_prompt(prompt: str) -> bool:
     Verify whether user input satisfies the concerned constraints.
 
     Args:
-        prompt: The user input text.
+        prompt (str): The user input text.
 
     Returns:
-        True if all criteria are satisfied; False otherwise.
+        bool: True if all criteria are satisfied; False otherwise.
     """
     if len(prompt) < 7 or ' ' not in prompt:
         return False
@@ -22,15 +25,16 @@ def is_valid_prompt(prompt: str) -> bool:
 
 def get_clean_json(json_str: str) -> str:
     """
-    Attempt to clean a JSON response string from the LLM by removing ```json at the beginning and
-    trailing ``` and any text beyond that.
-    CAUTION: May not be always accurate.
+    Attempt to clean a JSON response string from the LLM.
+
+    It removes Markdown code block delimiters (```json ... ```) and any
+    text surrounding the JSON object.
 
     Args:
-        json_str: The input string in JSON format.
+        json_str (str): The input string potentially containing JSON.
 
     Returns:
-        The "cleaned" JSON string.
+        str: The "cleaned" JSON string.
     """
     response_cleaned = json_str
 
@@ -57,13 +61,16 @@ def get_clean_json(json_str: str) -> str:
 
 def fix_malformed_json(json_str: str) -> str:
     """
-    Try and fix the syntax error(s) in a JSON string.
+    Try and fix syntax errors in a malformed JSON string.
+
+    This function uses the `json_repair` library to attempt to correct common
+    JSON syntax issues often found in LLM outputs (e.g., missing quotes, trailing commas).
 
     Args:
-        json_str: The input JSON string.
+        json_str (str): The input potentially malformed JSON string.
 
     Returns:
-        The fixed JSON string.
+        str: The fixed JSON string.
     """
     return jr.repair_json(json_str, skip_json_loads=True)
 

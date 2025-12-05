@@ -1,14 +1,17 @@
 # slidedeckai/agents/core_agents.py - FIXED LAYOUT VALIDATION
 """
-CRITICAL FIXES:
-1. Remove hardcoded fallbacks
-2. Strengthen layout validation
-3. Ensure unique subtitles always
-4. Better diversity enforcement
+Core agents for planning and orchestrating presentation generation.
+
+This module defines the `PlanGeneratorOrchestrator` which creates a `ResearchPlan`
+based on a user query and template layout capabilities. It handles:
+- Topic analysis and breakdown.
+- Layout selection and validation.
+- Detailed section planning (mapping content to placeholders).
+- Generation of search queries (or extraction instructions).
 """
 import logging
 import json
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Any
 from pydantic import BaseModel, Field
 from openai import OpenAI
 from slidedeckai.global_config import GlobalConfig
@@ -16,11 +19,17 @@ from slidedeckai.global_config import GlobalConfig
 logger = logging.getLogger(__name__)
 
 class SearchQuery(BaseModel):
+    """
+    Represents a single search query or data extraction instruction.
+    """
     query: str
     purpose: str
     expected_source_type: str = "research"
 
 class PlaceholderContentSpec(BaseModel):
+    """
+    Specification for content to be placed in a specific placeholder.
+    """
     placeholder_idx: int
     placeholder_type: str
     content_type: str
@@ -31,6 +40,9 @@ class PlaceholderContentSpec(BaseModel):
     dimensions: Dict = Field(default_factory=dict)
 
 class SectionPlan(BaseModel):
+    """
+    Plan for a single section (slide) of the presentation.
+    """
     section_title: str
     section_purpose: str
     layout_type: str
@@ -41,6 +53,9 @@ class SectionPlan(BaseModel):
     enforced_content_type: str = "bullets"
 
 class ResearchPlan(BaseModel):
+    """
+    Complete research and generation plan for the presentation.
+    """
     query: str
     analysis: Dict
     sections: List[SectionPlan]
@@ -50,9 +65,22 @@ class ResearchPlan(BaseModel):
 
 
 class PlanGeneratorOrchestrator:
-    """FIX #1 & #6: Remove fallbacks, strengthen validation"""
+    """
+    Orchestrates the creation of a presentation plan.
+
+    This class uses LLMs to analyze the user's request, determine the structure
+    of the presentation, select appropriate layouts from the template, and
+    generate detailed plans for each slide.
+    """
     
     def __init__(self, api_key: str, search_mode: str = 'normal'):
+        """
+        Initialize the orchestrator.
+
+        Args:
+            api_key (str): OpenAI API key.
+            search_mode (str, optional): The search mode ('normal', 'deep', etc.). Defaults to 'normal'.
+        """
         self.api_key = api_key
         self.search_mode = search_mode
         self.client = OpenAI(api_key=api_key)
@@ -62,11 +90,26 @@ class PlanGeneratorOrchestrator:
     def generate_plan(self, user_query: str, template_layouts: Dict, 
                      num_sections: Optional[int] = None, extracted_content: Optional[str] = None,
                      model_name: Optional[str] = None) -> ResearchPlan:
-        """Existing logic with FIX #1: Validate layouts upfront. Added support for extracted content."""
+        """
+        Generate a comprehensive research plan.
+
+        Args:
+            user_query (str): The user's topic or request.
+            template_layouts (Dict): Dictionary of available template layouts.
+            num_sections (Optional[int]): Desired number of sections/slides. If None, determined automatically.
+            extracted_content (Optional[str]): Content extracted from uploaded files.
+            model_name (Optional[str]): specific model to use.
+
+        Returns:
+            ResearchPlan: The generated plan.
+
+        Raises:
+            ValueError: If no usable layouts are found or validation fails.
+        """
         
         # DEMO MODE
-        if user_query.lower() == "ai agents in 2030" and (not self.api_key or self.api_key.startswith('sk-fake')):
-            logger.info("🤖 DEMO MODE: Generating mock plan for 'ai agents in 2030'")
+        if (user_query.lower() == "ai agents in 2030" or user_query.lower() == "ai agents in 2027") and (not self.api_key or self.api_key.startswith('sk-fake')):
+            logger.info(f"🤖 DEMO MODE: Generating mock plan for '{user_query}'")
             return self._generate_mock_plan(user_query, template_layouts)
 
         # Override model if provided
@@ -139,7 +182,19 @@ class PlanGeneratorOrchestrator:
                                                 capabilities: Dict,
                                                 template_layouts: Dict) -> List[Dict]:
         """
-        FIX #1 & #6: STRICT validation with NO fallbacks
+        Match topics to available layouts using LLM with strict validation.
+
+        Args:
+            topics (List[Dict]): List of topic dictionaries.
+            capabilities (Dict): Template capabilities summary.
+            template_layouts (Dict): Full layout details.
+
+        Returns:
+            List[Dict]: List of blueprints mapping topics to layouts.
+
+        Raises:
+            ValueError: If validation fails.
+            RuntimeError: If matching fails after retries.
         """
         
         valid_indices = sorted(capabilities['usable_layouts'])
@@ -251,7 +306,22 @@ REMEMBER: layout_idx MUST be an integer between {min_idx} and {max_idx}."""
     def _generate_detailed_slide_plan(self, section_num: int, blueprint: Dict,
                                    query: str, template_layouts: Dict,
                                    extracted_content: Optional[str] = None) -> SectionPlan:
-        """FIX #3: GUARANTEE unique subtitles with retry logic"""
+        """
+        Generate a detailed plan for a single slide, including content mapping.
+
+        Args:
+            section_num (int): The section number.
+            blueprint (Dict): The blueprint for this section.
+            query (str): The original query.
+            template_layouts (Dict): Available layouts.
+            extracted_content (Optional[str]): Extracted content source.
+
+        Returns:
+            SectionPlan: The detailed plan for the slide.
+
+        Raises:
+            ValueError: If layout index is invalid.
+        """
         
         layout_idx = blueprint['layout_idx']
         
@@ -325,7 +395,16 @@ REMEMBER: layout_idx MUST be an integer between {min_idx} and {max_idx}."""
     def _llm_generate_subtitle_guaranteed_unique(self, purpose: str, position: str, 
                                                   content_type: str, used_subtitles: set) -> str:
         """
-        FIX #3: GUARANTEE unique subtitle with strict retry logic
+        Generate a unique subtitle for a section, ensuring no duplicates.
+
+        Args:
+            purpose (str): Purpose of the section.
+            position (str): Position on the slide.
+            content_type (str): Type of content.
+            used_subtitles (set): Set of already used subtitles.
+
+        Returns:
+            str: A unique subtitle string.
         """
         
         max_attempts = 5
@@ -384,7 +463,16 @@ Return ONLY the heading text, nothing else."""
     
     # Keep all other existing methods unchanged
     def _llm_deep_analysis(self, query: str, extracted_content: Optional[str] = None) -> Dict:
-        """Existing - modified to use content"""
+        """
+        Perform deep analysis of the user query and content.
+
+        Args:
+            query (str): User query.
+            extracted_content (Optional[str]): Extracted content.
+
+        Returns:
+            Dict: Analysis result containing main subject, context, and aspects.
+        """
 
         context_str = f"Context from files:\n{extracted_content[:2000]}..." if extracted_content else ""
 
@@ -445,7 +533,17 @@ CRITICAL: Each aspect must be DIFFERENT. Think like you're planning a presentati
             }
     
     def _llm_determine_section_count(self, query: str, analysis: Dict, extracted_content: Optional[str] = None) -> int:
-        """Existing - unchanged"""
+        """
+        Determine the optimal number of sections/slides.
+
+        Args:
+            query (str): User query.
+            analysis (Dict): Deep analysis result.
+            extracted_content (Optional[str]): Extracted content.
+
+        Returns:
+            int: Recommended slide count.
+        """
         aspects = analysis.get('aspects', [])
         
         prompt = f"""Given this presentation request:
@@ -490,7 +588,15 @@ Return ONLY valid JSON:
             return max(6, min(len(aspects), 10))
     
     def _dynamic_template_analysis(self, layouts: Dict) -> Dict:
-        """Existing - unchanged"""
+        """
+        Analyze template layouts to categorize them by capability.
+
+        Args:
+            layouts (Dict): Dictionary of layouts.
+
+        Returns:
+            Dict: Capabilities summary (usable, chart_capable, table_capable, multi_content).
+        """
         usable = []
         chart_capable = []
         table_capable = []
@@ -521,7 +627,19 @@ Return ONLY valid JSON:
     
     def _llm_generate_all_topics(self, query: str, analysis: Dict, 
                                   count: int, capabilities: Dict, extracted_content: Optional[str] = None) -> List[Dict]:
-        """Existing - unchanged"""
+        """
+        Generate topics for each slide in the presentation.
+
+        Args:
+            query (str): User query.
+            analysis (Dict): Analysis result.
+            count (int): Number of topics to generate.
+            capabilities (Dict): Template capabilities.
+            extracted_content (Optional[str]): Extracted content.
+
+        Returns:
+            List[Dict]: List of generated topics.
+        """
         aspects = analysis.get('aspects', [])
         main_subject = analysis.get('main_subject', query)
         
@@ -596,7 +714,16 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
     
     def _assign_content_dynamically(self, specs: List, content_phs: List,
                                      blueprint: Dict, query: str, extracted_content: Optional[str] = None):
-        """Existing - unchanged"""
+        """
+        Dynamically assign content to placeholders based on size and purpose.
+
+        Args:
+            specs (List): List of specifications to append to.
+            content_phs (List): List of content placeholders from layout.
+            blueprint (Dict): Section blueprint.
+            query (str): User query.
+            extracted_content (Optional[str]): Extracted content.
+        """
         if not content_phs:
             return
         
@@ -655,7 +782,16 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
             ))
     
     def _determine_content_type(self, enforced: str, ph: Dict) -> str:
-        """Existing - unchanged"""
+        """
+        Determine the content type for a placeholder.
+
+        Args:
+            enforced (str): The enforced content type (if any).
+            ph (Dict): The placeholder details.
+
+        Returns:
+            str: The determined content type.
+        """
         area = ph.get('area', 0)
         ph_type = ph.get('type', '')
         
@@ -673,15 +809,31 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
         return 'bullets'
     
     def _generate_mock_plan(self, query: str, template_layouts: Dict) -> ResearchPlan:
-        """Generate a mock plan for demo purposes"""
+        """
+        Generate a mock plan for demo purposes.
+
+        Args:
+            query (str): The user query.
+            template_layouts (Dict): Available layouts.
+
+        Returns:
+            ResearchPlan: A mock plan.
+        """
         sections = []
-        # Mock 3 sections using available layouts
+        # Mock sections using available layouts
         layouts = sorted([k for k in template_layouts.keys() if k != 0])
 
+        # Generate 9 sections if user asked for 9
         mock_data = [
             ("The Rise of Autonomous Agents", "Introduction to AI agents and their future impact", "bullets"),
-            ("Market Size Projections", "Financial growth of the AI agent market by 2030", "chart"),
-            ("Key Industry Applications", "Where agents will be deployed: Healthcare, Finance, Coding", "icon_grid")
+            ("Market Size Projections", "Financial growth of the AI agent market by 2027", "chart"),
+            ("Key Industry Applications", "Where agents will be deployed: Healthcare, Finance, Coding", "icon_grid"),
+            ("Technological Drivers", "LLMs, Tool Use, and Memory advancements", "bullets"),
+            ("Economic Impact", "Productivity gains and labor market shifts", "chart"),
+            ("Challenges and Risks", "Safety, Alignment, and Security concerns", "bullets"),
+            ("Regulatory Landscape", "Emerging laws and compliance frameworks", "bullets"),
+            ("Case Study: Devin", "Analysis of autonomous software engineering agents", "bullets"),
+            ("Future Outlook 2030", "Predictions for widespread adoption and AGI", "icon_grid")
         ]
 
         for i, (title, purpose, ctype) in enumerate(mock_data):
@@ -721,7 +873,19 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
 
     def _llm_generate_search_query(self, main_query: str, purpose: str,
                                      content_type: str, role: str, extracted_content: Optional[str] = None) -> SearchQuery:
-        """Existing - updated to handle content extraction source"""
+        """
+        Generate a search query for a specific content need.
+
+        Args:
+            main_query (str): Main topic.
+            purpose (str): Purpose of the specific content.
+            content_type (str): Type of content.
+            role (str): Role of the content.
+            extracted_content (Optional[str]): Extracted content.
+
+        Returns:
+            SearchQuery: The generated query object.
+        """
 
         if extracted_content:
             # If we have extracted content, the "search query" becomes a "extraction instruction"

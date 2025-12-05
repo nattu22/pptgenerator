@@ -1,11 +1,15 @@
 """
 Core functionality of SlideDeck AI.
+
+This module provides the main `SlideDeckAI` class which orchestrates the generation
+of slide decks, including interacting with LLMs, planning story structures,
+and generating content for slides.
 """
 import logging
 import os
 import pathlib
 import tempfile
-from typing import Union, Any
+from typing import Union, Any, Dict, List, Optional
 import time
 import json5, json
 from dotenv import load_dotenv
@@ -16,8 +20,9 @@ from .global_config import GlobalConfig
 from .helpers import file_manager as filem
 from .helpers import llm_helper, pptx_helper, text_helper
 from .helpers.chat_helper import ChatMessageHistory
-from .layout_analyzer import TemplateAnalyzer
+from .layout_analyzer import TemplateAnalyzer, LayoutCapability, PlaceholderInfo
 from .content_matcher import ContentLayoutMatcher
+from pptx import Presentation
 
 
 RUN_IN_OFFLINE_MODE = os.getenv('RUN_IN_OFFLINE_MODE', 'False').lower() == 'true'
@@ -32,10 +37,10 @@ def _process_llm_chunk(chunk: Any) -> str:
     Helper function to process LLM response chunks consistently.
 
     Args:
-        chunk: The chunk received from the LLM stream.
+        chunk: The chunk received from the LLM stream. It can be a string or an object with a 'content' attribute.
 
     Returns:
-        The processed text from the chunk.
+        str: The processed text content from the chunk.
     """
     if isinstance(chunk, str):
         return chunk
@@ -50,14 +55,14 @@ def _stream_llm_response(llm: Any, prompt: str, progress_callback=None) -> str:
 
     Args:
         llm: The LLM instance to use for generating responses.
-        prompt: The prompt to send to the LLM.
-        progress_callback: A callback function to report progress.
+        prompt: The prompt string to send to the LLM.
+        progress_callback: Optional callback function that receives the current length of the response.
 
     Returns:
-        The complete response from the LLM.
+        str: The complete accumulated response from the LLM.
 
     Raises:
-        RuntimeError: If there's an error getting response from LLM.
+        RuntimeError: If there is an error during the streaming process.
     """
     response = ''
     try:
@@ -74,7 +79,10 @@ def _stream_llm_response(llm: Any, prompt: str, progress_callback=None) -> str:
 
 class SlideDeckAI:
     """
-    The main class for generating slide decks.
+    The main class for generating slide decks using AI.
+
+    This class handles the end-to-end process of creating a presentation,
+    from story planning and content generation to the final PPTX file creation.
     """
 
     def __init__(
@@ -90,15 +98,15 @@ class SlideDeckAI:
         Initialize the SlideDeckAI object.
 
         Args:
-            model: The name of the LLM model to use.
-            topic: The topic of the slide deck.
-            api_key: The API key for the LLM provider.
-            pdf_path_or_stream: The path to a PDF file or a file-like object.
-            pdf_page_range: A tuple representing the page range to use from the PDF file.
-            template_idx: The index of the PowerPoint template to use.
+            model (str): The name of the LLM model to use. Must be one of `GlobalConfig.VALID_MODELS`.
+            topic (str): The main topic or title of the slide deck.
+            api_key (str, optional): The API key for the LLM provider. Defaults to None.
+            pdf_path_or_stream (Union[str, IO], optional): The path to a PDF file or a file-like object to use as source material. Defaults to None.
+            pdf_page_range (tuple, optional): A tuple representing the page range to use from the PDF file. Defaults to None.
+            template_idx (int, optional): The index of the PowerPoint template to use from `GlobalConfig.PPTX_TEMPLATE_FILES`. Defaults to 0.
 
         Raises:
-            ValueError: If the model name is not in VALID_MODELS.
+            ValueError: If the model name is not in `VALID_MODELS`.
         """
         if model not in GlobalConfig.VALID_MODELS:
             raise ValueError(
@@ -118,12 +126,12 @@ class SlideDeckAI:
         self.last_response = None
         logger.info('Using model: %s', model)
 
-    def _initialize_llm(self):
+    def _initialize_llm(self) -> Any:
         """
         Initialize and return an LLM instance with the current configuration.
 
         Returns:
-            Configured LLM instance.
+            Any: A configured LLM instance (e.g., from LiteLLM).
         """
         provider, llm_name = llm_helper.get_provider_model(
             self.model,
@@ -139,13 +147,13 @@ class SlideDeckAI:
 
     def _get_prompt_template(self, is_refinement: bool) -> str:
         """
-        Return a prompt template.
+        Retrieve the appropriate prompt template.
 
         Args:
-            is_refinement: Whether this is the initial or refinement prompt.
+            is_refinement (bool): Whether to get the refinement prompt template (True) or the initial prompt template (False).
 
         Returns:
-            The prompt template as f-string.
+            str: The content of the prompt template file.
         """
         if is_refinement:
             with open(GlobalConfig.REFINEMENT_PROMPT_TEMPLATE, 'r', encoding='utf-8') as in_file:
@@ -155,10 +163,19 @@ class SlideDeckAI:
                 template = in_file.read()
         return template
     
-    def _build_executive_story_plan(self, topic: str, template_name: str) -> Dict:
+    def _build_executive_story_plan(self, topic: str, template_name: str) -> Dict[str, Any]:
         """
-        CRITICAL: Plan the story BEFORE generating content
-        Returns section structure with layout assignments
+        Plan the story structure before generating content.
+
+        This method defines a sequence of sections for an executive presentation,
+        tailoring the layout requirements for each section.
+
+        Args:
+            topic (str): The topic of the presentation.
+            template_name (str): The name of the template being used.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the story plan, including sections and the analyzer instance.
         """
         
         # Get template analyzer
@@ -167,14 +184,14 @@ class SlideDeckAI:
         analyzer = TemplateAnalyzer(presentation)
         
         # Get available layouts sorted by executive suitability
-        exec_layouts = sorted(
-            analyzer.layouts.items(),
-            key=lambda x: x[1].executive_suitability,
-            reverse=True
-        )
+        # exec_layouts = sorted(
+        #     analyzer.layouts.items(),
+        #     key=lambda x: x[1].executive_suitability,
+        #     reverse=True
+        # )
         
         # Build story sections (10-12 slides typical)
-        num_slides = 10
+        # num_slides = 10
         
         sections = []
         
@@ -310,8 +327,19 @@ class SlideDeckAI:
         }
 
 
-    def generate(self) -> pathlib.Path:
-        """ENHANCED with executive story planning"""
+    def generate(self) -> Union[pathlib.Path, None]:
+        """
+        Generate the slide deck based on the initialized topic and settings.
+
+        This method orchestrates the story planning, prompt construction, LLM interaction,
+        and finally the slide deck creation.
+
+        Returns:
+            Union[pathlib.Path, None]: The path to the generated PPTX file, or None if generation failed.
+
+        Raises:
+            RuntimeError: If there is a failure in getting a response from the LLM.
+        """
         
         start_time = time.time()
         logger.info(f'🚀 Generating executive deck on: {self.topic}')
@@ -385,11 +413,21 @@ class SlideDeckAI:
         except Exception as e:
             logger.error(f'LLM streaming failed: {e}')
             raise RuntimeError(f'Failed to get response from LLM: {e}') from e
+
+        # STEP 4: GENERATE PPTX
+        self.last_response = text_helper.get_clean_json(response)
+        return self._generate_slide_deck(self.last_response)
     
     def _generate_section_plan(self, layouts_info: dict) -> list:
         """
-        Generate high-level section plan based on available layouts
-        Returns: [{"section_title": ..., "layout_idx": ..., "purpose": ...}, ...]
+        Generate a high-level section plan based on available layouts.
+
+        Args:
+            layouts_info (dict): Information about available layouts.
+
+        Returns:
+            list: A list of dictionaries, where each dictionary represents a section plan
+                  containing keys like "section_title", "layout_idx", "purpose", etc.
         """
         llm = self._initialize_llm()
         
@@ -445,7 +483,15 @@ class SlideDeckAI:
             raise
     
     def _format_layouts_for_planning(self, layouts_info: dict) -> str:
-        """Format layout info for LLM"""
+        """
+        Format layout information into a string for the LLM prompt.
+
+        Args:
+            layouts_info (dict): A dictionary containing layout information.
+
+        Returns:
+            str: A formatted string describing the layouts.
+        """
         formatted = []
         for idx, layout in layouts_info['layouts'].items():
             formatted.append(
@@ -458,7 +504,16 @@ class SlideDeckAI:
         return '\n\n'.join(formatted)
     
     def _enforce_layout_diversity(self, plan: list, layouts_info: dict) -> list:
-        """Ensure no 3 consecutive same layout types"""
+        """
+        Ensure no three consecutive sections use the same layout.
+
+        Args:
+            plan (list): The initial section plan.
+            layouts_info (dict): Information about available layouts.
+
+        Returns:
+            list: The modified section plan with better layout diversity.
+        """
         for i in range(2, len(plan)):
             if plan[i-2]['layout_idx'] == plan[i-1]['layout_idx'] == plan[i]['layout_idx']:
                 # Find alternative layout
@@ -475,7 +530,15 @@ class SlideDeckAI:
         return plan
     
     def _generate_content_for_sections(self, section_plan: list) -> dict:
-        """Generate actual content for each planned section"""
+        """
+        Generate actual content for each planned section.
+
+        Args:
+            section_plan (list): The list of planned sections.
+
+        Returns:
+            dict: A dictionary containing the presentation title and a list of generated slides.
+        """
         llm = self._initialize_llm()
         
         all_slides = []
@@ -525,16 +588,16 @@ class SlideDeckAI:
             'slides': all_slides
         }
     
-    def revise(self, instructions, progress_callback=None):
+    def revise(self, instructions: str, progress_callback=None) -> Union[pathlib.Path, None]:
         """
         Revise the slide deck with new instructions.
 
         Args:
-            instructions: The instructions for revising the slide deck.
-            progress_callback: Optional callback function to report progress.
+            instructions (str): The instructions for revising the slide deck.
+            progress_callback (callable, optional): Optional callback function to report progress.
 
         Returns:
-            The path to the revised .pptx file.
+            Union[pathlib.Path, None]: The path to the revised .pptx file, or None if failed.
 
         Raises:
             ValueError: If no slide deck exists or chat history is full.
@@ -577,10 +640,10 @@ class SlideDeckAI:
         Create a slide deck and return the file path.
 
         Args:
-            json_str: The content in valid JSON format.
+            json_str (str): The content in valid JSON format.
 
         Returns:
-            The path to the .pptx file or None in case of error.
+            Union[pathlib.Path, None]: The path to the .pptx file or None in case of error.
         """
         try:
             parsed_data = json5.loads(json_str)
@@ -615,11 +678,11 @@ class SlideDeckAI:
         Set the LLM model (and API key) to use.
 
         Args:
-            model_name: The name of the model to use.
-            api_key: The API key for the LLM provider.
+            model_name (str): The name of the model to use.
+            api_key (str, optional): The API key for the LLM provider.
 
         Raises:
-            ValueError: If the model name is not in VALID_MODELS.
+            ValueError: If the model name is not in `VALID_MODELS`.
         """
         if model_name not in GlobalConfig.VALID_MODELS:
             raise ValueError(
@@ -631,12 +694,12 @@ class SlideDeckAI:
             self.api_key = api_key
         logger.debug('Model set to: %s', model_name)
 
-    def set_template(self, idx):
+    def set_template(self, idx: int):
         """
         Set the PowerPoint template to use.
 
         Args:
-            idx: The index of the template to use.
+            idx (int): The index of the template to use from `GlobalConfig.PPTX_TEMPLATE_FILES`.
         """
         num_templates = len(GlobalConfig.PPTX_TEMPLATE_FILES)
         self.template_idx = idx if 0 <= idx < num_templates else 0
@@ -650,17 +713,18 @@ class SlideDeckAI:
         self.template_idx = 0
         self.topic = ''
         
-    def generate_from_plan(self, plan: 'ResearchPlan', progress_callback=None):
+    def generate_from_plan(self, plan: Any, progress_callback=None) -> Union[pathlib.Path, None]:
         """
         Generate slides from an approved research plan.
         
         Args:
-            plan: ResearchPlan object with sections and queries
-            progress_callback: Optional callback for progress updates
+            plan (ResearchPlan): ResearchPlan object with sections and queries.
+            progress_callback (callable, optional): Optional callback for progress updates.
         
         Returns:
-            Path to generated PPTX file
+            Union[pathlib.Path, None]: Path to generated PPTX file.
         """
+        # Note: Importing inside method to avoid circular imports if core_agents imports this
         from slidedeckai.agents.core_agents import ResearchPlan
         
         # Convert plan sections to SlideDeck format
@@ -686,4 +750,4 @@ class SlideDeckAI:
         self.topic = enhanced_topic
         
         # Generate slides using existing SlideDeck AI logic
-        return self.generate(progress_callback=progress_callback)
+        return self.generate()
