@@ -11,6 +11,7 @@ import json
 from typing import List, Dict, Optional, Set
 from pydantic import BaseModel, Field
 from openai import OpenAI
+from slidedeckai.global_config import GlobalConfig
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +56,24 @@ class PlanGeneratorOrchestrator:
         self.api_key = api_key
         self.search_mode = search_mode
         self.client = OpenAI(api_key=api_key)
-        self.model = "gpt-4o-mini"
+        self.model = GlobalConfig.LLM_MODEL_FAST
         self.used_topics: Set[str] = set()
     
     def generate_plan(self, user_query: str, template_layouts: Dict, 
-                     num_sections: Optional[int] = None) -> ResearchPlan:
-        """Existing logic with FIX #1: Validate layouts upfront"""
+                     num_sections: Optional[int] = None, extracted_content: Optional[str] = None,
+                     model_name: Optional[str] = None) -> ResearchPlan:
+        """Existing logic with FIX #1: Validate layouts upfront. Added support for extracted content."""
         
-        logger.info("🤖 Starting FULLY DYNAMIC planning...")
+        # DEMO MODE
+        if user_query.lower() == "ai agents in 2030" and (not self.api_key or self.api_key.startswith('sk-fake')):
+            logger.info("🤖 DEMO MODE: Generating mock plan for 'ai agents in 2030'")
+            return self._generate_mock_plan(user_query, template_layouts)
+
+        # Override model if provided
+        if model_name:
+            self.model = model_name
+
+        logger.info(f"🤖 Starting FULLY DYNAMIC planning using model: {self.model}")
         
         # ✅ FIX #1: Validate layouts FIRST
         template_layouts = {int(k): v for k, v in template_layouts.items()}
@@ -70,13 +81,13 @@ class PlanGeneratorOrchestrator:
         if not template_layouts:
             raise ValueError("No layouts found in template!")
         
-        # STEP 1: Deep analysis
-        analysis = self._llm_deep_analysis(user_query)
+        # STEP 1: Deep analysis (using content if available)
+        analysis = self._llm_deep_analysis(user_query, extracted_content)
         logger.info(f"  🧠 Analysis complete")
         
         # STEP 2: Determine section count
         target_sections = num_sections if num_sections else self._llm_determine_section_count(
-            user_query, analysis
+            user_query, analysis, extracted_content
         )
         logger.info(f"  📊 Target: {target_sections} sections")
         
@@ -90,7 +101,7 @@ class PlanGeneratorOrchestrator:
         
         # STEP 4: Generate topics
         section_topics = self._llm_generate_all_topics(
-            user_query, analysis, target_sections, template_capabilities
+            user_query, analysis, target_sections, template_capabilities, extracted_content
         )
         logger.info(f"  📝 Generated {len(section_topics)} unique topics")
         
@@ -106,7 +117,8 @@ class PlanGeneratorOrchestrator:
                 section_num=i,
                 blueprint=blueprint,
                 query=user_query,
-                template_layouts=template_layouts
+                template_layouts=template_layouts,
+                extracted_content=extracted_content
             )
             sections.append(section)
             logger.info(f"  ✅ Slide {i}: {section.section_title}")
@@ -237,7 +249,8 @@ REMEMBER: layout_idx MUST be an integer between {min_idx} and {max_idx}."""
         raise RuntimeError("Layout matching failed unexpectedly")
     
     def _generate_detailed_slide_plan(self, section_num: int, blueprint: Dict,
-                                   query: str, template_layouts: Dict) -> SectionPlan:
+                                   query: str, template_layouts: Dict,
+                                   extracted_content: Optional[str] = None) -> SectionPlan:
         """FIX #3: GUARANTEE unique subtitles with retry logic"""
         
         layout_idx = blueprint['layout_idx']
@@ -295,7 +308,7 @@ REMEMBER: layout_idx MUST be an integer between {min_idx} and {max_idx}."""
         # CONTENT
         content_phs = layout['placeholders']['content']
         self._assign_content_dynamically(
-            specs, content_phs, blueprint, query
+            specs, content_phs, blueprint, query, extracted_content
         )
         
         return SectionPlan(
@@ -370,11 +383,16 @@ Return ONLY the heading text, nothing else."""
         return unique_heading
     
     # Keep all other existing methods unchanged
-    def _llm_deep_analysis(self, query: str) -> Dict:
-        """Existing - unchanged"""
+    def _llm_deep_analysis(self, query: str, extracted_content: Optional[str] = None) -> Dict:
+        """Existing - modified to use content"""
+
+        context_str = f"Context from files:\n{extracted_content[:2000]}..." if extracted_content else ""
+
         prompt = f"""You are an expert business analyst. Analyze this presentation request:
 
 "{query}"
+
+{context_str}
 
 Your task:
 1. Understand the MAIN SUBJECT (company, topic, product, etc.)
@@ -426,13 +444,14 @@ CRITICAL: Each aspect must be DIFFERENT. Think like you're planning a presentati
                 "aspects": [f"Aspect {i+1}" for i in range(6)]
             }
     
-    def _llm_determine_section_count(self, query: str, analysis: Dict) -> int:
+    def _llm_determine_section_count(self, query: str, analysis: Dict, extracted_content: Optional[str] = None) -> int:
         """Existing - unchanged"""
         aspects = analysis.get('aspects', [])
         
         prompt = f"""Given this presentation request:
 Query: "{query}"
 Identified aspects: {len(aspects)}
+{'Content available: Yes' if extracted_content else ''}
 
 How many slides should this presentation have?
 
@@ -501,16 +520,20 @@ Return ONLY valid JSON:
         }
     
     def _llm_generate_all_topics(self, query: str, analysis: Dict, 
-                                  count: int, capabilities: Dict) -> List[Dict]:
+                                  count: int, capabilities: Dict, extracted_content: Optional[str] = None) -> List[Dict]:
         """Existing - unchanged"""
         aspects = analysis.get('aspects', [])
         main_subject = analysis.get('main_subject', query)
         
+        content_prompt = f"Base your topics on this content:\n{extracted_content[:3000]}..." if extracted_content else ""
+
         prompt = f"""Create {count} COMPLETELY DIFFERENT slide topics for this presentation:
 
 Main Subject: {main_subject}
 Context: {analysis.get('context', 'analysis')}
 Aspects to cover: {json.dumps(aspects, indent=2)}
+
+{content_prompt}
 
 Template capabilities:
 - Can display charts: {len(capabilities['chart_capable'])} layouts
@@ -572,7 +595,7 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
             ]
     
     def _assign_content_dynamically(self, specs: List, content_phs: List,
-                                     blueprint: Dict, query: str):
+                                     blueprint: Dict, query: str, extracted_content: Optional[str] = None):
         """Existing - unchanged"""
         if not content_phs:
             return
@@ -586,7 +609,7 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
         primary_type = self._determine_content_type(enforced, largest)
         
         search_query = self._llm_generate_search_query(
-            query, purpose, primary_type, "primary"
+            query, purpose, primary_type, "primary", extracted_content
         )
         
         specs.append(PlaceholderContentSpec(
@@ -614,7 +637,7 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
             else:
                 ct = 'bullets'
             
-            sq = self._llm_generate_search_query(query, purpose, ct, f"supporting_{i}")
+            sq = self._llm_generate_search_query(query, purpose, ct, f"supporting_{i}", extracted_content)
             
             specs.append(PlaceholderContentSpec(
                 placeholder_idx=ph['idx'],
@@ -649,9 +672,65 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
         
         return 'bullets'
     
+    def _generate_mock_plan(self, query: str, template_layouts: Dict) -> ResearchPlan:
+        """Generate a mock plan for demo purposes"""
+        sections = []
+        # Mock 3 sections using available layouts
+        layouts = sorted([k for k in template_layouts.keys() if k != 0])
+
+        mock_data = [
+            ("The Rise of Autonomous Agents", "Introduction to AI agents and their future impact", "bullets"),
+            ("Market Size Projections", "Financial growth of the AI agent market by 2030", "chart"),
+            ("Key Industry Applications", "Where agents will be deployed: Healthcare, Finance, Coding", "icon_grid")
+        ]
+
+        for i, (title, purpose, ctype) in enumerate(mock_data):
+            layout_idx = layouts[i % len(layouts)]
+            # Create dummy specs
+            layout = template_layouts[layout_idx]
+            specs = []
+
+            # Title spec
+            specs.append(PlaceholderContentSpec(
+                placeholder_idx=0, placeholder_type="TITLE", content_type="text",
+                content_description=title, position_group="title", role="title"
+            ))
+
+            # Content spec
+            content_phs = layout['placeholders'].get('content', [])
+            if content_phs:
+                ph = content_phs[0]
+                specs.append(PlaceholderContentSpec(
+                    placeholder_idx=ph['idx'], placeholder_type=ph['type'],
+                    content_type=ctype, content_description=f"{purpose} - main content",
+                    search_queries=[SearchQuery(query=f"mock data for {title}", purpose="demo")],
+                    position_group=ph.get('position_group', ''), role="content",
+                    dimensions={'area': ph.get('area', 0)}
+                ))
+
+            sections.append(SectionPlan(
+                section_title=title, section_purpose=purpose, layout_type=layout['layout_type'],
+                layout_idx=layout_idx, layout_story="", placeholder_specs=specs,
+                total_search_queries=1, enforced_content_type=ctype
+            ))
+
+        return ResearchPlan(
+            query=query, analysis={"main_subject": "AI Agents", "context": "Future Outlook"},
+            sections=sections, search_mode="demo", total_queries=3, template_info={}
+        )
+
     def _llm_generate_search_query(self, main_query: str, purpose: str,
-                                     content_type: str, role: str) -> SearchQuery:
-        """Existing - unchanged"""
+                                     content_type: str, role: str, extracted_content: Optional[str] = None) -> SearchQuery:
+        """Existing - updated to handle content extraction source"""
+
+        if extracted_content:
+            # If we have extracted content, the "search query" becomes a "extraction instruction"
+             return SearchQuery(
+                query=f"Extract info about {purpose} for {content_type}",
+                purpose=f"{purpose} - {role}",
+                expected_source_type='extracted_content'
+            )
+
         prompt = f"""Generate a specific search query:
 
 Main topic: {main_query}

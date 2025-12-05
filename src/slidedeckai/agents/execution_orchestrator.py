@@ -23,6 +23,8 @@ from .search_executor import WebSearchExecutor
 from .content_generator import ContentGenerator
 from slidedeckai.layout_analyzer import TemplateAnalyzer
 from slidedeckai.content_matcher import ContentLayoutMatcher
+from slidedeckai.helpers.icon_selector import IconSelector
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,8 @@ class ExecutionOrchestrator:
         self.template_path = template_path
         self.search_executor = WebSearchExecutor(api_key)
         self.content_generator = ContentGenerator(api_key)
+        self.icon_selector = IconSelector()
+        self.openai_client = OpenAI(api_key=api_key)
         # Optional: use the LLM to validate/override inferred placeholder roles
         self.use_llm_role_validation = use_llm_role_validation
         
@@ -129,24 +133,50 @@ class ExecutionOrchestrator:
         logger.info(f"✅ Extracted template properties: {len(properties['theme_colors'])} colors")
         return properties
     
-    def execute_plan(self, plan, output_path: pathlib.Path) -> pathlib.Path:
+    def execute_plan(self, plan, output_path: pathlib.Path, chart_data: Optional[Dict] = None, extracted_content: Optional[str] = None) -> pathlib.Path:
         """
         FIX #2 & #5: Add title/thank-you slides + parallel processing
         """
+        # DEMO MODE SHORTCUT
+        if plan.search_mode == "demo":
+            logger.info("🤖 DEMO MODE: Generating mock presentation without LLM/Search")
+            return self._execute_mock_plan(plan, output_path)
+
         logger.info("🚀 Executing FULLY FIXED plan...")
         logger.info(f"  Slides: {len(plan.sections)}")
         
         # STEP 1: Execute searches IN PARALLEL
         all_queries = []
+        # If expected_source_type is 'extracted_content', we skip web search
+        search_queries = []
+
         for section in plan.sections:
             for spec in section.placeholder_specs:
-                all_queries.extend([q.query for q in spec.search_queries])
+                for q in spec.search_queries:
+                    if getattr(q, 'expected_source_type', '') != 'extracted_content':
+                         search_queries.append(q.query)
         
-        logger.info(f"  Queries: {len(all_queries)}")
-        logger.info("🔍 Executing searches IN PARALLEL...")
+        logger.info(f"  Queries: {len(search_queries)}")
         
-        search_results = self._execute_searches_parallel(all_queries)
-        logger.info(f"✅ {len(search_results)} searches complete")
+        if search_queries:
+            logger.info("🔍 Executing searches IN PARALLEL...")
+            search_results = self._execute_searches_parallel(search_queries)
+            logger.info(f"✅ {len(search_results)} searches complete")
+        else:
+            search_results = {}
+
+        # If we have extracted content, make it available for content generation
+        # by treating it as a "fact" for queries tagged with 'extracted_content'
+        if extracted_content:
+             # Iterate again to populate search_results with extracted_content
+             for section in plan.sections:
+                for spec in section.placeholder_specs:
+                    for q in spec.search_queries:
+                        if getattr(q, 'expected_source_type', '') == 'extracted_content':
+                             # Use the extracted content as the result
+                             # We truncate it slightly if it's too huge, but ideally we should search IN it.
+                             # For now, we pass it all as one "fact"
+                             search_results[q.query] = [extracted_content]
         
         # STEP 2: Clear existing slides (keep only master)
         slide_ids = [slide.slide_id for slide in self.presentation.slides]
@@ -168,7 +198,8 @@ class ExecutionOrchestrator:
                     section, 
                     search_results,
                     idx,
-                    len(plan.sections)
+                    len(plan.sections),
+                    chart_data=chart_data
                 )
                 execution_log.append(slide_log)
                 
@@ -334,8 +365,8 @@ class ExecutionOrchestrator:
         logger.info(f"  ✓ Thank you slide added")
     
     def _generate_slide_smart(self, section, search_results: Dict, 
-                              slide_num: int, total: int) -> Dict:
-        """Existing logic - unchanged"""
+                              slide_num: int, total: int, chart_data: Optional[Dict] = None) -> Dict:
+        """Existing logic - updated to handle chart_data"""
         
         layout_idx = section.layout_idx
         
@@ -396,8 +427,16 @@ class ExecutionOrchestrator:
             pass
 
         # PREPARE content for placeholders in parallel (only text/chart/table data generation)
+        # If chart_data is provided globally, we inject it into prepared_content for chart placeholders
         prepared_content = self._prepare_section_content(section, placeholder_map, search_results)
         
+        if chart_data:
+             for ph_id, ph_info in placeholder_map.items():
+                if ph_info['role'] == 'chart':
+                    # Override/Inject chart data
+                    prepared_content[ph_id] = {'type': 'chart', 'chart_data': chart_data}
+                    logger.info(f"    ↳ Injected uploaded chart data for PH {ph_id}")
+
         logger.info(f"  📋 Layout has {len(placeholder_map)} placeholders:")
         for ph_id, ph_info in placeholder_map.items():
             logger.info(f"    [{ph_id}] {ph_info['type']} - {ph_info['area']:.1f} sq in - {ph_info['role']}")
@@ -540,6 +579,34 @@ class ExecutionOrchestrator:
         except KeyError:
             logger.error(f"      ❌ Placeholder {ph_id} not found in slide")
             return {'id': ph_id, 'status': 'not_found'}
+
+        # Try to find icon if content description mentions icon/symbol
+        # Or if the role was detected as 'icon' by LLM
+        if role == 'icon' or (role == 'content' and area < 1.0):
+             # Try to find a keyword for icon
+             keyword = section.section_title # Default
+             if section.placeholder_specs:
+                 for spec in section.placeholder_specs:
+                     if spec.placeholder_idx == ph_id:
+                         keyword = spec.content_description
+                         break
+
+             icon_file = self.icon_selector.select_icon_for_keyword(keyword, self.openai_client)
+             if ph_info['type_id'] == 15 or role == 'image':
+                 try:
+                     from slidedeckai.global_config import GlobalConfig
+                     # Get full path for icon using GlobalConfig
+                     icon_path = GlobalConfig.ICONS_DIR / icon_file
+                     if not icon_path.exists():
+                         # Fallback to placeholder if icon not found
+                         icon_path = GlobalConfig.ICONS_DIR.parent / "placeholder.png"
+
+                     if icon_path.exists():
+                         placeholder.insert_picture(str(icon_path))
+                         logger.info(f"      ✓ Icon inserted: {icon_file}")
+                         return {'id': ph_id, 'role': role, 'icon': icon_file, 'status': 'filled'}
+                 except Exception as e:
+                     logger.warning(f"      ⚠️ Failed to insert icon: {e}")
         
         if role == 'subtitle':
             # If pre-generated content exists, use it
@@ -1184,6 +1251,41 @@ class ExecutionOrchestrator:
         except Exception as e:
             logger.debug(f"Batch role validation failed: {e}")
             return {int(pid): info.get('role') for pid, info in placeholder_map.items()}
+
+    def _execute_mock_plan(self, plan, output_path: pathlib.Path) -> pathlib.Path:
+        """Execute a plan in demo mode purely with mock data"""
+
+        # Add Title Slide
+        self._add_title_slide(plan.query)
+
+        for section in plan.sections:
+            layout_idx = section.layout_idx
+            layout = self.presentation.slide_layouts[layout_idx]
+            slide = self.presentation.slides.add_slide(layout)
+
+            # Title
+            if slide.shapes.title:
+                slide.shapes.title.text = section.section_title
+
+            # Mock content for placeholders
+            for shape in slide.placeholders:
+                if shape.placeholder_format.idx == 0: continue
+
+                # Simple fallback filling
+                if shape.has_text_frame:
+                    shape.text = f"Demo Content for {section.section_purpose}\n- Mock Point 1\n- Mock Point 2"
+
+        # Add Thank You
+        self._add_thank_you_slide()
+
+        self.presentation.save(output_path)
+
+        # Save mock log
+        log_path = str(output_path).replace('.pptx', '.execution.json')
+        with open(log_path, 'w') as f:
+            json.dump([{'slide': 1, 'status': 'demo_success'}], f)
+
+        return output_path
 
     def _get_placeholder_type_name(self, type_id: int) -> str:
         """Existing mapping - unchanged"""
