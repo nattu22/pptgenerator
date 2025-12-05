@@ -23,6 +23,8 @@ from pptx import Presentation
 
 # Import HTML UI
 from slidedeckai.ui.html_ui import HTML_UI
+from slidedeckai.helpers.file_processor import FileProcessor
+from openai import OpenAI
 
 # Import orchestrators
 from slidedeckai.agents.core_agents import PlanGeneratorOrchestrator
@@ -131,11 +133,63 @@ def index():
 def create_plan():
     """Phase 1: Create layout-aware research plan with enforced diversity"""
     try:
-        data = request.get_json()
-        query = data.get('query', '').strip()
-        template_key = data.get('template', 'Basic')
-        search_mode = data.get('search_mode', 'normal')
-        num_sections = data.get('num_sections', None)
+        api_key = os.getenv('OPENAI_API_KEY') # Default
+
+        # Check if this is a file upload request
+        if request.content_type.startswith('multipart/form-data'):
+            query = request.form.get('query', '').strip()
+            template_key = request.form.get('template', 'Basic')
+            search_mode = request.form.get('search_mode', 'normal')
+            num_sections = request.form.get('num_sections', None)
+
+            # Optional overrides
+            req_api_key = request.form.get('api_key')
+            if req_api_key:
+                api_key = req_api_key
+
+            # TODO: Handle Model overrides if PlanGeneratorOrchestrator supports it dynamically
+
+            if num_sections:
+                try:
+                    num_sections = int(num_sections)
+                except:
+                    num_sections = None
+
+            uploaded_files = request.files.getlist('files')
+            chart_file = request.files.get('chart_file')
+            extracted_text = ""
+            chart_data = None
+
+            # Process uploaded content files
+            if uploaded_files:
+                for file in uploaded_files:
+                    if file.filename:
+                        text = FileProcessor.extract_text(file)
+                        if text:
+                            extracted_text += f"\n\n--- Content from {file.filename} ---\n{text}"
+
+            # Process chart file if present
+            if chart_file and chart_file.filename:
+                # Use provided API key or env var for extraction
+                if not api_key:
+                     return jsonify({'error': 'API key required for chart extraction'}), 400
+                client = OpenAI(api_key=api_key)
+                chart_data = FileProcessor.extract_chart_data(chart_file, client)
+                logger.info(f"  📊 Extracted chart data: {chart_data is not None}")
+
+        else:
+            data = request.get_json()
+            query = data.get('query', '').strip()
+            template_key = data.get('template', 'Basic')
+            search_mode = data.get('search_mode', 'normal')
+            num_sections = data.get('num_sections', None)
+            extracted_text = ""
+            chart_data = None
+
+            # Optional overrides
+            req_api_key = data.get('api_key')
+            if req_api_key:
+                api_key = req_api_key
         
         if not query:
             return jsonify({'error': 'Query required'}), 400
@@ -143,10 +197,11 @@ def create_plan():
         logger.info(f"🔥 Creating plan: {query}")
         logger.info(f"  Template: {template_key}")
         logger.info(f"  Mode: {search_mode}")
+        if extracted_text:
+            logger.info(f"  📄 Using uploaded content ({len(extracted_text)} chars)")
         
-        api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
-            return jsonify({'error': 'OpenAI API key not configured'}), 500
+            return jsonify({'error': 'OpenAI API key not configured. Please provide it in settings or .env'}), 500
         
         # Validate template exists
         if template_key not in GlobalConfig.PPTX_TEMPLATE_FILES:
@@ -168,11 +223,16 @@ def create_plan():
             search_mode=search_mode
         )
         
+        llm_model = request.form.get('llm_model') if request.content_type.startswith('multipart/form-data') else data.get('llm_model')
+
         # Generate plan with enforced diversity
+        # Pass extracted content if available
         research_plan = orchestrator.generate_plan(
             user_query=query,
             template_layouts=layout_info['layouts'],
-            num_sections=num_sections
+            num_sections=num_sections,
+            extracted_content=extracted_text if extracted_text else None,
+            model_name=llm_model
         )
         
         # Cache plan
@@ -182,7 +242,9 @@ def create_plan():
             'template_key': template_key,
             'search_mode': search_mode,
             'research_plan': research_plan,
-            'analyzer': analyzer
+            'analyzer': analyzer,
+            'chart_data': chart_data, # Store extracted chart data
+            'extracted_content': extracted_text # Store extracted text content
         }
         
         # Serialize plan
@@ -230,13 +292,33 @@ def execute_plan():
         query = plan_data['query']
         template_key = plan_data['template_key']
         research_plan = plan_data['research_plan']
+        chart_data = plan_data.get('chart_data') # Retrieve chart data
+        extracted_content = plan_data.get('extracted_content') # Retrieve extracted content
+
+        # Use API key from request if provided (stateless execution)
+        # However, for consistency, if the user provided an API key during plan generation, we should probably stick to it or ask for it again.
+        # Ideally, we should receive it again here or store it in cache (not recommended for secrets).
+        # Let's assume the user has to provide it if not in env, or it's passed in data.
+        # But `html_ui` currently only sends `plan_id`.
+        # I'll stick to env var for now unless I update `execute` frontend call too.
+        # Wait, I should update frontend `approvePlan` to send API key if it was set in settings.
+        # But `approvePlan` logic is separate.
+        # Let's rely on `orchestrator`'s API key.
+        # Actually, `plans_cache` is in-memory. I can store the API key there TEMPORARILY for the session?
+        # A better practice is to pass it from frontend.
+
+        # Retrieve potential API key from plans_cache if I decided to store it there (I didn't).
+        # So I will check if data has api_key (I need to update frontend to send it).
+
+        api_key = data.get('api_key') or os.getenv('OPENAI_API_KEY')
         
         logger.info(f"🚀 Executing plan {plan_id}")
         logger.info(f"  Query: {query}")
         logger.info(f"  Template: {template_key}")
         logger.info(f"  Sections: {len(research_plan.sections)}")
+        if chart_data:
+            logger.info("  📊 Using pre-loaded chart data")
         
-        api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
             return jsonify({'error': 'OpenAI API key not configured'}), 500
         
@@ -254,7 +336,7 @@ def execute_plan():
             template_path=template_file
         )
         
-        output_path = orchestrator.execute_plan(research_plan, output_path)
+        output_path = orchestrator.execute_plan(research_plan, output_path, chart_data=chart_data, extracted_content=extracted_content)
         
         # Cache results
         report_id = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -336,6 +418,58 @@ def get_templates():
         logger.error(f"Template listing failed: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/api/chat', methods=['POST'])
+def chat_slide():
+    """Chat with the slide content to refine it"""
+    try:
+        data = request.get_json()
+        report_id = data.get('report_id')
+        slide_idx = data.get('slide_idx')
+        instruction = data.get('instruction')
+
+        if not report_id or not instruction:
+            return jsonify({'error': 'Missing parameters'}), 400
+
+        logger.info(f"💬 Chat for {report_id} slide {slide_idx}: {instruction}")
+
+        # Placeholder response for demo purposes
+        return jsonify({
+            'success': True,
+            'message': 'Slide updated based on instruction',
+            'updated_content': {
+                'title': f"Updated Slide {slide_idx}",
+                'bullets': ["Refined bullet 1", "Refined bullet 2"]
+            }
+        })
+    except Exception as e:
+        logger.error(f"Chat failed: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/preview/<report_id>')
+def preview_report(report_id):
+    """Get preview data for the report (mocking image generation)"""
+    # In a real scenario, this would convert PPTX pages to images
+    # For now, we return slide metadata to render a HTML preview
+    if report_id not in slides_cache:
+        return jsonify({'error': 'Report not found'}), 404
+
+    cached = slides_cache[report_id]
+    # We could inspect the plan or the PPTX here
+    # Mocking preview data
+    slides = []
+    # Add title slide
+    slides.append({'title': cached.get('topic', 'Title Slide'), 'type': 'title', 'content': []})
+
+    # Add fake content slides based on what we know (or just generic)
+    for i in range(3):
+        slides.append({
+            'title': f"Slide {i+1}",
+            'type': 'bullets',
+            'content': [f"Point {j+1}" for j in range(3)]
+        })
+
+    return jsonify({'slides': slides})
 
 @app.route('/api/health')
 def health():

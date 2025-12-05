@@ -182,6 +182,12 @@ class GlobalConfig:
     EMBEDDINGS_FILE_NAME = _SRC_DIR / 'file_embeddings/embeddings.npy'
     ICONS_FILE_NAME = _SRC_DIR / 'file_embeddings/icons.npy'
 
+    # Model settings
+    LLM_MODEL = 'gpt-4o'
+    LLM_MODEL_FAST = 'gpt-4o-mini'
+    LLM_MODEL_VISION = 'gpt-4o'
+    LLM_EMBEDDING_MODEL = 'text-embedding-3-small'
+
     PPTX_TEMPLATE_FILES = {
         'Basic': {
             'file': _SRC_DIR / 'pptx_templates/Blank.pptx',
