@@ -73,7 +73,7 @@ HTML_UI = """
             font-weight: 600;
             color: #333;
         }
-        textarea, select {
+        textarea, select, input[type="file"] {
             width: 100%;
             padding: 12px;
             border: 2px solid #e5e7eb;
@@ -238,8 +238,30 @@ HTML_UI = """
         </div>
         
         <div class="input-group">
-            <label>Research Query</label>
-            <textarea id="query" placeholder="e.g., Tesla Q4 2024 financial performance and market position"></textarea>
+            <label>Content Source</label>
+            <div style="display: flex; gap: 20px; margin-bottom: 10px;">
+                <label style="font-weight: normal;"><input type="radio" name="sourceType" value="search" checked onclick="toggleSource('search')"> Web Search</label>
+                <label style="font-weight: normal;"><input type="radio" name="sourceType" value="file" onclick="toggleSource('file')"> Upload Files</label>
+            </div>
+
+            <div id="searchSource">
+                <label>Research Query</label>
+                <textarea id="query" placeholder="e.g., Tesla Q4 2024 financial performance and market position"></textarea>
+            </div>
+
+            <div id="fileSource" style="display: none;">
+                <label>Upload Content Files (TXT, CSV, Excel)</label>
+                <input type="file" id="contentFile" multiple accept=".txt,.csv,.xlsx,.xls">
+                <small style="color: #666; margin-top: 5px; display: block;">Extracted content will be used instead of web search.</small>
+                <label style="margin-top: 10px;">Topic / Subject</label>
+                <input type="text" id="fileTopic" placeholder="Briefly describe the topic of the uploaded files" style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px;">
+            </div>
+        </div>
+
+        <div class="input-group">
+             <label>Chart Data (Optional)</label>
+             <input type="file" id="chartFile" accept=".png,.jpg,.jpeg,.csv,.xlsx,.xls">
+             <small style="color: #666; margin-top: 5px; display: block;">Upload image, Excel, or CSV to generate charts based on data.</small>
         </div>
         
         <button class="btn" onclick="generatePlan()">🔍 Analyze & Create Plan</button>
@@ -350,8 +372,20 @@ HTML_UI = """
             });
         }
         
+        function toggleSource(type) {
+            if (type === 'search') {
+                document.getElementById('searchSource').style.display = 'block';
+                document.getElementById('fileSource').style.display = 'none';
+            } else {
+                document.getElementById('searchSource').style.display = 'none';
+                document.getElementById('fileSource').style.display = 'block';
+            }
+        }
+
         function setQuery(text) {
             document.getElementById('query').value = text;
+            // Ensure search mode is selected
+            document.querySelector('input[name="sourceType"][value="search"]').click();
         }
         
         function showStatus(msg, type) {
@@ -361,30 +395,54 @@ HTML_UI = """
         }
         
         async function generatePlan() {
-            const query = document.getElementById('query').value.trim();
-            if (!query) {
-                showStatus('⚠️ Please enter a research query', 'error');
-                return;
-            }
+            const sourceType = document.querySelector('input[name="sourceType"]:checked').value;
+            let query = '';
+            let formData = new FormData();
             
             const template = document.getElementById('template').value;
+            formData.append('template', template);
+            formData.append('search_mode', selectedMode);
+
+            if (sourceType === 'search') {
+                query = document.getElementById('query').value.trim();
+                if (!query) {
+                    showStatus('⚠️ Please enter a research query', 'error');
+                    return;
+                }
+                formData.append('query', query);
+            } else {
+                const files = document.getElementById('contentFile').files;
+                if (files.length === 0) {
+                    showStatus('⚠️ Please upload at least one file', 'error');
+                    return;
+                }
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('files', files[i]);
+                }
+                query = document.getElementById('fileTopic').value.trim();
+                if (!query) {
+                     showStatus('⚠️ Please enter a topic for the files', 'error');
+                     return;
+                }
+                formData.append('query', query);
+            }
             
+            // Chart file
+            const chartFile = document.getElementById('chartFile').files[0];
+            if (chartFile) {
+                formData.append('chart_file', chartFile);
+            }
+
             document.getElementById('spinner').classList.add('show');
             document.getElementById('planReview').classList.remove('show');
-            showStatus('🔍 Analyzing query and generating research plan...', 'loading');
+            showStatus('🔍 Analyzing input and generating research plan...', 'loading');
             
             try {
                 console.log('🚀 Sending request to /api/plan');
-                console.log('📤 Request data:', { query, search_mode: selectedMode, template });
                 
                 const response = await fetch('/api/plan', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ 
-                        query, 
-                        search_mode: selectedMode,
-                        template: template
-                    })
+                    body: formData // Send as FormData
                 });
                 
                 console.log('📡 Response received');

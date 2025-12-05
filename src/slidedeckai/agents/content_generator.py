@@ -6,6 +6,7 @@ import logging
 import json
 from typing import List, Dict
 from openai import OpenAI
+from slidedeckai.global_config import GlobalConfig
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class ContentGenerator:
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)
         # Use GPT-4 family for content generation (best available GPT-4 model by default)
-        self.model = "gpt-4.1-mini"
+        self.model = GlobalConfig.LLM_MODEL
     
     def generate_subtitle(self, slide_title: str, purpose: str, 
                          search_facts: List[str]) -> str:
