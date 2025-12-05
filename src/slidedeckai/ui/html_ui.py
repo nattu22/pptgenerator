@@ -1,3 +1,8 @@
+"""
+This module defines the HTML and JavaScript content for the SlideDeck AI frontend.
+It is served as a single-page application by the Flask backend.
+"""
+
 HTML_UI = """
 <!DOCTYPE html>
 <html>
@@ -967,7 +972,8 @@ HTML_UI = """
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ 
-                    plan_id: currentPlan.plan_id  // ✅ FIXED - send plan_id only
+                    plan_id: currentPlan.plan_id,
+                    sections: currentPlan.sections // ✅ SEND UPDATED SECTIONS
                 })
             })
             .then(response => {
@@ -1123,6 +1129,7 @@ HTML_UI = """
                 section_title: "New Section",
                 section_purpose: "Describe the purpose of this section",
                 visualization_hint: "bullets",
+                placeholder_specs: [], // Initialize empty specs
                 search_queries: [
                     {
                         query: "Enter search query here",
@@ -1241,7 +1248,7 @@ HTML_UI = """
                     // Update section details
                     section.section_title = titleInput.value.trim();
                     section.section_purpose = document.getElementById(`section_${idx}_purpose`).value.trim();
-                    section.visualization_hint = document.getElementById(`section_${idx}_viz`).value;
+                    section.layout_type = document.getElementById(`section_${idx}_layout`).value.trim();
                     
                     // Update queries for this section
                     const updatedQueries = [];
@@ -1270,6 +1277,24 @@ HTML_UI = """
                     }
                     
                     section.search_queries = updatedQueries;
+
+                    // HACK: Re-assign queries to the first content placeholder to ensure backend receives them
+                    if (section.placeholder_specs) {
+                        // Clear existing queries from specs to avoid duplicates/confusion
+                        section.placeholder_specs.forEach(spec => {
+                            if (spec.search_queries) spec.search_queries = [];
+                        });
+
+                        // Find a suitable placeholder (content or main_content)
+                        let targetSpec = section.placeholder_specs.find(s => s.role === 'content' || s.role === 'main_content');
+                        // Fallback to first spec if no content role found
+                        if (!targetSpec && section.placeholder_specs.length > 0) targetSpec = section.placeholder_specs[0];
+
+                        if (targetSpec) {
+                            targetSpec.search_queries = updatedQueries;
+                        }
+                    }
+
                     updatedSections.push(section);
                 }
                 
@@ -1288,9 +1313,13 @@ HTML_UI = """
                 planSectionsCollapsed = true;
         
                 // Refresh the display (it will use the collapsed state)
-                displayPlan(currentPlan);
-                
-                showStatus('✅ Changes saved! Review and approve to generate report.', 'success');
+                try {
+                    displayPlan(currentPlan);
+                    showStatus('✅ Changes saved! Review and approve to generate report.', 'success');
+                } catch (dispErr) {
+                    console.error("Display error:", dispErr);
+                    showStatus('⚠️ Saved, but display error: ' + dispErr.message, 'success');
+                }
                 
             } catch (error) {
                 showStatus('❌ Error saving changes: ' + error.message, 'error');

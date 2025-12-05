@@ -1,24 +1,49 @@
 """
 FIXED content_matcher.py - ONLY enhancing existing functions
+
+This module handles the intelligent mapping of generated content to PowerPoint
+slide layouts. It uses the `TemplateAnalyzer` to select the best layout for
+a given content type (bullets, charts, tables) and narrative context.
 """
 import logging
-from typing import Dict, Optional, List
-from .layout_analyzer import TemplateAnalyzer
+from typing import Dict, Optional, List, Tuple, Any
+from .layout_analyzer import TemplateAnalyzer, LayoutCapability
 
 logger = logging.getLogger(__name__)
 
 
 class ContentLayoutMatcher:
-    """ENHANCED - Same class, better intelligence"""
+    """
+    Matches slide content to the most appropriate layout in the template.
+
+    This class selects layouts based on content type, story position, executive
+    suitability, and diversity rules. It also handles mapping specific content
+    elements (like charts or bullet lists) to the correct placeholders on the slide.
+    """
     
     def __init__(self, analyzer: TemplateAnalyzer):
+        """
+        Initialize the ContentLayoutMatcher.
+
+        Args:
+            analyzer (TemplateAnalyzer): The analyzer instance with layout information.
+        """
         self.analyzer = analyzer
         self.used_layouts = []
         self.used_story_types = []  # NEW: Track story types used
         self.section_sequence = []  # NEW: Planned story arc
 
     def _is_compatible_story_type(self, layout_story: str, preferred_story: str) -> bool:
-        """Check if layout story type is compatible with preferred"""
+        """
+        Check if a layout's story type is compatible with the preferred story type.
+
+        Args:
+            layout_story (str): The story type of the candidate layout.
+            preferred_story (str): The preferred story type for the section.
+
+        Returns:
+            bool: True if compatible, False otherwise.
+        """
         
         compatible_groups = [
             {"data_visualization", "metrics_dashboard"},
@@ -38,11 +63,21 @@ class ContentLayoutMatcher:
                                        slide_index: int,
                                        total_slides: int) -> int:
         """
+        Select a layout based on content, story position, diversity, and executive suitability.
+
         CRITICAL: Select layout based on:
         1. Content type (chart/table/bullets)
         2. Story position (opening/body/closing)
         3. Diversity (no 3 consecutive same type)
         4. Executive suitability
+
+        Args:
+            slide_json (dict): The JSON content of the slide.
+            slide_index (int): The index of the slide in the presentation.
+            total_slides (int): The total number of slides.
+
+        Returns:
+            int: The index of the selected layout.
         """
         
         # Build sequence if not done
@@ -109,10 +144,13 @@ class ContentLayoutMatcher:
     
     def _build_section_sequence(self, total_sections: int) -> List[str]:
         """
-        CRITICAL: Build executive story arc
-        Opening -> Body -> Closing structure
-        
-        Returns list of preferred story types in order
+        Build an executive story arc sequence (Opening -> Body -> Closing).
+
+        Args:
+            total_sections (int): Total number of sections/slides.
+
+        Returns:
+            List[str]: A list of preferred story types in order.
         """
         
         sequence = []
@@ -151,7 +189,17 @@ class ContentLayoutMatcher:
         return sequence
         
     def select_layout_for_slide(self, slide_json: dict, slide_index: int = 0, total_slides: int = 10) -> int:
-        """ENHANCED with story awareness"""
+        """
+        Select the best layout for a slide, enforcing diversity and story coherence.
+
+        Args:
+            slide_json (dict): The JSON content of the slide.
+            slide_index (int, optional): The index of the slide. Defaults to 0.
+            total_slides (int, optional): The total number of slides. Defaults to 10.
+
+        Returns:
+            int: The index of the selected layout.
+        """
         
         # Use new story-aware selection to get initial pick
         layout_idx = self.select_layout_with_story_awareness(
@@ -230,10 +278,18 @@ class ContentLayoutMatcher:
 
         return layout_idx
 
-    def map_content_to_placeholders(self, slide_json: dict, layout_capability) -> dict:
+    def map_content_to_placeholders(self, slide_json: dict, layout_capability: LayoutCapability) -> dict:
         """
-        CRITICAL: Map slide content to specific placeholders intelligently
-        Returns: {placeholder_idx: content_spec}
+        Map slide content to specific placeholders intelligently.
+
+        CRITICAL: Map slide content to specific placeholders intelligently.
+
+        Args:
+            slide_json (dict): The content of the slide.
+            layout_capability (LayoutCapability): The capability object of the selected layout.
+
+        Returns:
+            dict: A mapping of {placeholder_idx: content_spec}.
         """
         mapping = {}
         
@@ -308,7 +364,15 @@ class ContentLayoutMatcher:
         return mapping
     
     def select_layout_with_scoring(self, slide_json: dict) -> int:
-        """ENHANCED scoring with space awareness"""
+        """
+        Select a layout based on scoring logic (used by basic logic).
+
+        Args:
+            slide_json (dict): The slide content.
+
+        Returns:
+            int: The index of the selected layout.
+        """
         
         content_type = self._infer_content_type_from_json(slide_json)
         
@@ -334,7 +398,16 @@ class ContentLayoutMatcher:
         return 1
     
     def _find_alternative_layout(self, current_idx: int, slide_json: dict) -> int:
-        """ADDED: Find alternative to avoid repetition"""
+        """
+        Find an alternative layout to the current one to avoid repetition.
+
+        Args:
+            current_idx (int): The currently selected layout index.
+            slide_json (dict): The slide content.
+
+        Returns:
+            int: The index of an alternative layout.
+        """
         content_type = self._infer_content_type_from_json(slide_json)
         
         # Get all suitable layouts excluding current
@@ -354,9 +427,19 @@ class ContentLayoutMatcher:
         
         return current_idx
 
-    def _score_layout_for_content(self, layout_capability, content_type: str, 
+    def _score_layout_for_content(self, layout_capability: LayoutCapability, content_type: str,
                               slide_json: dict) -> float:
-        """ENHANCED scoring with space awareness"""
+        """
+        Score a layout's suitability for the given content.
+
+        Args:
+            layout_capability (LayoutCapability): The layout capability to score.
+            content_type (str): The inferred content type.
+            slide_json (dict): The slide content.
+
+        Returns:
+            float: A score from 0 to 100.
+        """
         score = 0.0
         
         # Base match
@@ -391,8 +474,17 @@ class ContentLayoutMatcher:
         
         return min(100.0, score)
     
-    def _score_for_chart(self, layout, slide_json: dict) -> float:
-        """ADDED: Smart chart scoring"""
+    def _score_for_chart(self, layout: LayoutCapability, slide_json: dict) -> float:
+        """
+        Calculate score for chart content.
+
+        Args:
+            layout (LayoutCapability): The layout.
+            slide_json (dict): The slide content.
+
+        Returns:
+            float: Score.
+        """
         score = 0.0
         
         # Check capacity
@@ -412,8 +504,17 @@ class ContentLayoutMatcher:
         
         return score
     
-    def _score_for_table(self, layout, slide_json: dict) -> float:
-        """ADDED: Smart table scoring"""
+    def _score_for_table(self, layout: LayoutCapability, slide_json: dict) -> float:
+        """
+        Calculate score for table content.
+
+        Args:
+            layout (LayoutCapability): The layout.
+            slide_json (dict): The slide content.
+
+        Returns:
+            float: Score.
+        """
         score = 0.0
         
         table_data = slide_json.get('table', {})
@@ -438,8 +539,17 @@ class ContentLayoutMatcher:
         
         return score
     
-    def _score_for_kpi(self, layout, slide_json: dict) -> float:
-        """ADDED: Smart KPI scoring"""
+    def _score_for_kpi(self, layout: LayoutCapability, slide_json: dict) -> float:
+        """
+        Calculate score for KPI dashboard content.
+
+        Args:
+            layout (LayoutCapability): The layout.
+            slide_json (dict): The slide content.
+
+        Returns:
+            float: Score.
+        """
         score = 0.0
         
         bullets = slide_json.get('bullet_points', [])
@@ -461,8 +571,17 @@ class ContentLayoutMatcher:
         
         return score
     
-    def _score_for_pictogram(self, layout, slide_json: dict) -> float:
-        """ADDED: Smart pictogram scoring"""
+    def _score_for_pictogram(self, layout: LayoutCapability, slide_json: dict) -> float:
+        """
+        Calculate score for pictogram content.
+
+        Args:
+            layout (LayoutCapability): The layout.
+            slide_json (dict): The slide content.
+
+        Returns:
+            float: Score.
+        """
         score = 0.0
         
         bullets = slide_json.get('bullet_points', [])
@@ -484,8 +603,17 @@ class ContentLayoutMatcher:
         
         return score
     
-    def _score_for_comparison(self, layout, slide_json: dict) -> float:
-        """ENHANCED comparison scoring"""
+    def _score_for_comparison(self, layout: LayoutCapability, slide_json: dict) -> float:
+        """
+        Calculate score for comparison content.
+
+        Args:
+            layout (LayoutCapability): The layout.
+            slide_json (dict): The slide content.
+
+        Returns:
+            float: Score.
+        """
         score = 0.0
         
         bullets = slide_json.get('bullet_points', [])
@@ -507,8 +635,17 @@ class ContentLayoutMatcher:
         
         return score
     
-    def _score_for_bullets(self, layout, slide_json: dict) -> float:
-        """ENHANCED with density awareness"""
+    def _score_for_bullets(self, layout: LayoutCapability, slide_json: dict) -> float:
+        """
+        Calculate score for bullet list content with density awareness.
+
+        Args:
+            layout (LayoutCapability): The layout.
+            slide_json (dict): The slide content.
+
+        Returns:
+            float: Score.
+        """
         score = 0.0
         
         bullets = slide_json.get('bullet_points', [])
@@ -538,8 +675,16 @@ class ContentLayoutMatcher:
         
         return score
     
-    def _estimate_bullet_lines(self, bullets) -> int:
-        """ADDED: Estimate lines needed"""
+    def _estimate_bullet_lines(self, bullets: Any) -> int:
+        """
+        Estimate the number of lines needed for the bullet points.
+
+        Args:
+            bullets: The bullet points (list of strings, nested lists, or dicts).
+
+        Returns:
+            int: Estimated number of lines.
+        """
         if not isinstance(bullets, list):
             return 5
         
@@ -557,7 +702,15 @@ class ContentLayoutMatcher:
         return lines
 
     def _infer_content_type_from_json(self, slide_json: dict) -> str:
-        """Existing inference - unchanged"""
+        """
+        Infer the content type from the slide JSON.
+
+        Args:
+            slide_json (dict): The slide content.
+
+        Returns:
+            str: The content type (e.g., 'chart', 'table', 'bullets').
+        """
         
         if 'chart' in slide_json and slide_json['chart']:
             return 'chart'
@@ -584,4 +737,18 @@ class ContentLayoutMatcher:
                     return 'comparison'
         
         return 'bullets'
-    
+
+    def _is_icon_slide(self, slide_json: dict) -> bool:
+        """
+        Check if the slide contains icon/pictogram content.
+
+        Args:
+            slide_json (dict): The slide content.
+
+        Returns:
+            bool: True if it contains icon syntax '[[...]]', False otherwise.
+        """
+        bullets = slide_json.get('bullet_points', [])
+        if isinstance(bullets, list):
+            return any(isinstance(item, str) and '[[' in item for item in bullets)
+        return False

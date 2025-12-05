@@ -1,194 +1,98 @@
----
-title: SlideDeck AI
-emoji: 🏢
-colorFrom: yellow
-colorTo: green
-sdk: streamlit
-sdk_version: 1.44.1
-app_file: app.py
-pinned: false
-license: mit
----
+# SlideDeck AI - Autonomous Presentation Generator
 
+**SlideDeck AI** is an advanced, AI-powered system that autonomously generates professional PowerPoint presentations. It goes beyond simple text-to-slide conversion by orchestrating a multi-agent workflow that plans the narrative, researches content, selects appropriate layouts, and generates visual elements like charts and tables.
 
-[![PyPI](https://img.shields.io/pypi/v/slidedeckai.svg)](https://pypi.org/project/slidedeckai/)
-[![codecov](https://codecov.io/gh/barun-saha/slide-deck-ai/branch/main/graph/badge.svg)](https://codecov.io/gh/barun-saha/slide-deck-ai)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://huggingface.co/spaces/barunsaha/slide-deck-ai)
+## 🚀 Key Features
 
-# SlideDeck AI
+*   **Intelligent Planning**: Instead of blindly generating slides, the system first creates a comprehensive research plan, determining the optimal number of slides, section topics, and flow based on your query.
+*   **Executive Storytelling**: Designed to produce "consulting-style" decks with clear narratives, executive summaries, and structured arguments.
+*   **Dynamic Layout Selection**: Uses a smart `TemplateAnalyzer` to inspect your PowerPoint template and select the best layout for each slide's content (e.g., charts for data, columns for comparisons).
+*   **Web Search Integration**: Capable of performing simulated or real web searches to gather factual, quantitative data for your slides.
+*   **Visual Content Generation**: Automatically generates charts (bar, column, pie) and tables based on the research data.
+*   **Interactive Refinement**: A web-based UI allows you to review the plan, edit search queries, and even chat with individual slides to refine content before downloading.
+*   **File Upload Support**: Upload PDF, TXT, CSV, or Excel files to generate presentations based on your own documents.
 
-We spend a lot of time **creating** slides and organizing our thoughts for any presentation. 
-With SlideDeck AI, co-create slide decks on any topic with **Artificial Intelligence** and **Large Language Models**.
-Describe your topic and let SlideDeck AI generate a **PowerPoint slide deck** for you—it's as simple as that!
+## 🛠️ Architecture
 
+The system is built on a modular architecture:
 
-## Star History
+*   **`flask_app.py`**: The backend API and web server.
+*   **`slidedeckai.core`**: The central coordinator (`SlideDeckAI`) for the generation process.
+*   **`slidedeckai.agents`**:
+    *   `PlanGeneratorOrchestrator`: BREAKS down the user query into a structured plan.
+    *   `ExecutionOrchestrator`: EXECUTES the plan, generating content and slides.
+    *   `SearchExecutor`: Retrieval agent for gathering facts.
+    *   `ContentGenerator`: LLM agent for writing slide text and structuring data.
+*   **`slidedeckai.layout_analyzer`**: Intelligent engine that parses PPTX templates to understand available layouts and their suitability.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=barun-saha/slide-deck-ai&type=Date)](https://star-history.com/#barun-saha/slide-deck-ai&Date)
+## 📦 Installation
 
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/yourusername/slidedeckai.git
+    cd slidedeckai
+    ```
 
-## Process
+2.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+    *Note: You may need to install `playwright` separately for testing.*
 
-SlideDeck AI works in the following way:
+3.  **Environment Setup:**
+    Create a `.env` file in the root directory and add your API keys:
+    ```env
+    OPENAI_API_KEY=sk-...
+    # Optional: Other provider keys if using them
+    ```
 
-1. Given a topic description, it uses a Large Language Model (LLM) to generate the *initial* content of the slides. 
-The output is generated as structured JSON data based on a pre-defined schema.
-2. Next, it uses the keywords from the JSON output to search and download a few images with a certain probability.
-3. Subsequently, it uses the `python-pptx` library to generate the slides, 
-based on the JSON data from the previous step. 
-A user can choose from a set of pre-defined presentation templates.
-4. At this stage onward, a user can provide additional instructions to *refine* the content.
-For example, one can ask to add another slide or modify an existing slide.
-A history of instructions is maintained.
-5. Every time SlideDeck AI generates a PowerPoint presentation, a download button is provided.
-Clicking on the button will download the file.
+## 🏃 Usage
 
-In addition, SlideDeck AI can also create a presentation based on PDF files.
+### Web Interface (Recommended)
 
+1.  Start the application:
+    ```bash
+    python flask_app.py
+    ```
+2.  Open your browser and navigate to `http://localhost:5000`.
+3.  **Generate a Deck**:
+    *   Enter a topic (e.g., "AI Agents in 2027").
+    *   Select a template.
+    *   Click "Analyze & Create Plan".
+4.  **Refine**:
+    *   Review the generated plan. You can edit section titles or search queries.
+    *   Click "Approve & Generate Slides".
+5.  **Preview & Download**:
+    *   Preview the generated slides in the UI.
+    *   Use the Chat feature to refine specific slides (e.g., "Make this bullet point shorter").
+    *   Download the final `.pptx` file.
 
-## Python API Usage
+### CLI
 
-```python
-from slidedeckai.core import SlideDeckAI
-
-
-slide_generator = SlideDeckAI(
-    model='[gg]gemini-2.5-flash-lite',
-    topic='Make a slide deck on AI',
-    api_key='your-google-api-key',  # Or set via environment variable
-)
-pptx_path = slide_generator.generate()
-print(f'🤖 Generated slide deck: {pptx_path}')
-```
-
-## CLI Usage
-
-Generate a new slide deck:
-```bash
-slidedeckai generate --model '[gg]gemini-2.5-flash-lite' --topic 'Make a slide deck on AI' --api-key 'your-google-api-key'
-```
-
-Launch the Streamlit app:
-```bash
-slidedeckai launch
-```
-
-List supported models (these are the only models supported by SlideDeck AI):
-```bash
-slidedeckai --list-models
-```
-
-
-## Summary of the LLMs
-
-SlideDeck AI allows the use of different LLMs from several online providers—Azure OpenAI, Google, Cohere, Together AI, and OpenRouter. Most of these service providers offer generous free usage of relevant LLMs without requiring any billing information.  
-
-Based on several experiments, SlideDeck AI generally recommends the use of **Mistral NeMo**, **Gemini Flash**, and **GPT-4o** to generate the slide decks.
-
-The supported LLMs offer different styles of content generation. Use one of the following LLMs along with relevant API keys/access tokens, as appropriate, to create the content of the slide deck:
-
-| LLM                                 | Provider (code)          | Requires API key                                                                                                         | Characteristics          |
-|:------------------------------------|:-------------------------|:-------------------------------------------------------------------------------------------------------------------------|:-------------------------|
-| Claude Haiku 4.5                    | Anthropic (`an`)         | Mandatory; [get here](https://platform.claude.com/settings/keys)                                                         | Faster, detailed         |
-| Gemini 2.0 Flash                    | Google Gemini API (`gg`) | Mandatory; [get here](https://aistudio.google.com/apikey)                                                                | Faster, longer content   |
-| Gemini 2.0 Flash Lite               | Google Gemini API (`gg`) | Mandatory; [get here](https://aistudio.google.com/apikey)                                                                | Fastest, longer content  |
-| Gemini 2.5 Flash                    | Google Gemini API (`gg`) | Mandatory; [get here](https://aistudio.google.com/apikey)                                                                | Faster, longer content   |
-| Gemini 2.5 Flash Lite               | Google Gemini API (`gg`) | Mandatory; [get here](https://aistudio.google.com/apikey)                                                                | Fastest, longer content  |
-| GPT-4.1-mini                        | OpenAI (`oa`)            | Mandatory; [get here](https://platform.openai.com/settings/organization/api-keys)                                        | Faster, medium content   |
-| GPT-4.1-nano                        | OpenAI (`oa`)            | Mandatory; [get here](https://platform.openai.com/settings/organization/api-keys)                                        | Faster, shorter content  |
-| GPT-5                               | OpenAI (`oa`)            | Mandatory; [get here](https://platform.openai.com/settings/organization/api-keys)                                        | Slow, shorter content    |
-| GPT                                 | Azure OpenAI (`az`)      | Mandatory; [get here](https://ai.azure.com/resource/playground)  NOTE: You need to have your subscription/billing set up | Faster, longer content   |
-| Command R+                          | Cohere (`co`)            | Mandatory; [get here](https://dashboard.cohere.com/api-keys)                                                             | Shorter, simpler content |
-| Gemini-2.0-flash-001                | OpenRouter (`or`)        | Mandatory; [get here](https://openrouter.ai/settings/keys)                                                               | Faster, longer content   |
-| GPT-3.5 Turbo                       | OpenRouter (`or`)        | Mandatory; [get here](https://openrouter.ai/settings/keys)                                                               | Faster, longer content   |
-| DeepSeek-V3.1-Terminus              | SambaNova (`sn`)         | Mandatory; [get here](https://cloud.sambanova.ai/apis)                                                                   | Fast, detailed content   |
-| Llama-3.3-Swallow-70B-Instruct-v0.4 | SambaNova (`sn`)         | Mandatory; [get here](https://cloud.sambanova.ai/apis)                                                                   | Fast, shorter            |
-| DeepSeek V3-0324                    | Together AI (`to`)       | Mandatory; [get here](https://api.together.ai/settings/api-keys)                                                         | Slower, medium-length    |
-| Llama 3.3 70B Instruct Turbo        | Together AI (`to`)       | Mandatory; [get here](https://api.together.ai/settings/api-keys)                                                         | Slower, detailed         |
-| Llama 3.1 8B Instruct Turbo 128K    | Together AI (`to`)       | Mandatory; [get here](https://api.together.ai/settings/api-keys)                                                         | Faster, shorter          |
-
-> **IMPORTANT**: SlideDeck AI does **NOT** store your API keys/tokens or transmit them elsewhere. If you provide your API key, it is only used to invoke the relevant LLM to generate contents. That's it! This is an 
-Open-Source project, so feel free to audit the code and convince yourself. 
-
-In addition, offline LLMs provided by Ollama can be used. Read below to know more. 
-
-
-## Icons
-
-SlideDeck AI uses a subset of icons from [bootstrap-icons-1.11.3](https://github.com/twbs/icons) (MIT license) in the slides. A few icons from [SVG Repo](https://www.svgrepo.com/)
-(CC0, MIT, and Apache licenses) are also used. 
-
-
-## Local Development
-
-SlideDeck AI uses LLMs via different providers. To run this project by yourself, you need to use an appropriate API key, for example, in a `.env` file.
-Alternatively, you can provide the access token in the app's user interface itself (UI).
-
-### Offline LLMs Using Ollama
-
-SlideDeck AI allows the use of offline LLMs to generate the contents of the slide decks. This is typically suitable for individuals or organizations who would like to use self-hosted LLMs for privacy concerns, for example.
-
-Offline LLMs are made available via Ollama. Therefore, a pre-requisite here is to have [Ollama installed](https://ollama.com/download) on the system and the desired [LLM](https://ollama.com/search) pulled locally. You should choose a model to use based on your hardware capacity. However, if you have no GPU, [gemma3:1b](https://ollama.com/library/gemma3:1b) can be a suitable model to run only on CPU.
-
-In addition, the `RUN_IN_OFFLINE_MODE` environment variable needs to be set to `True` to enable the offline mode. This, for example, can be done using a `.env` file or from the terminal. The typical steps to use SlideDeck AI in offline mode (in a `bash` shell) are as follows:
+You can also use the command-line interface for quick generation:
 
 ```bash
-# Environment initialization, especially on Debian
-sudo apt update -y
-sudo apt install python-is-python3 -y
-sudo apt install git -y
-# Change the package name based on the Python version installed: python -V
-sudo apt install python3.11-venv -y
-
-# Install Git Large File Storage (LFS)
-sudo apt install git-lfs -y
-git lfs install
-
-ollama list  # View locally available LLMs
-export RUN_IN_OFFLINE_MODE=True  # Enable the offline mode to use Ollama
-git clone [https://github.com/barun-saha/slide-deck-ai.git](https://github.com/barun-saha/slide-deck-ai.git)
-cd slide-deck-ai
-git lfs pull  # Pull the PPTX template files - ESSENTIAL STEP!
-
-python -m venv venv  # Create a virtual environment
-source venv/bin/activate  # On a Linux system
-pip install -r requirements.txt
-
-streamlit run ./app.py  # Run the application
+python src/slidedeckai/cli.py generate --topic "Future of Space Exploration" --model "[oa]gpt-4o" --output-path space_deck.pptx
 ```
 
-> 💡If you have cloned the repository locally but cannot open and view the PPTX templates, you may need to run `git lfs pull` to download the template files. Without this, although content generation will work, the slide deck cannot be created.
+## 🧪 Testing
 
-The `.env` file should be created inside the `slide-deck-ai` directory. 
+To verify the system functionality, you can run the provided verification script (requires Playwright):
 
-The UI is similar to the online mode. However, rather than selecting an LLM from a list, one has to write the name of the Ollama model to be used in a textbox. There is no API key asked here.
+```bash
+pip install playwright
+playwright install
+python verification_script.py
+```
 
-The online and offline modes are mutually exclusive. So, setting `RUN_IN_OFFLINE_MODE` to `False` will make SlideDeck AI use the online LLMs (i.e., the "original mode."). By default, `RUN_IN_OFFLINE_MODE` is set to `False`.
+## 📝 Documentation
 
-Finally, the focus is on using offline LLMs, not going completely offline. So, Internet connectivity would still be required to fetch the images from Pexels. 
+The codebase is fully documented. Check the source files in `src/slidedeckai` for detailed docstrings on classes and methods.
 
+## 🤝 Contributing
 
-# Live Demo
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-- [SlideDeck AI](https://huggingface.co/spaces/barunsaha/slide-deck-ai) on Hugging Face Spaces
-- [Demo video](https://youtu.be/QvAKzNKtk9k) of the chat interface on YouTube
-- Demo video on [using Azure OpenAI](https://youtu.be/oPbH-z3q0Mw)
+## 📄 License
 
-
-# Award
-
-SlideDeck AI has won the 3rd Place in the [Llama 2 Hackathon with Clarifai](https://lablab.ai/event/llama-2-hackathon-with-clarifai) in 2023.
-
-
-# Contributors
-
-SlideDeck AI is glad to have the following community contributions:
-- [Aditya](https://github.com/AdiBak): added support for page range selection for PDF files and new chat button.
-- [Sagar Bharatbhai Bharadia](https://github.com/sagarbharadia17): added support for Gemini 2.5 Flash Lite and Gemini 2.5 Flash LLMs.
-- [Sairam Pillai](https://github.com/sairampillai): unified the project's LLM access by migrating the API calls to **LiteLLM**.
-- [Srinivasan Ragothaman](https://github.com/rsrini7): added OpenRouter support and API keys mapping from the `.env` file.
-
-Thank you all for your contributions!
-
-[![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors)
+MIT License
