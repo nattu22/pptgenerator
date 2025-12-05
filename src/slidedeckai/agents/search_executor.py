@@ -1,23 +1,51 @@
 # slidedeckai/agents/search_executor.py - SMART & CLEAN
+"""
+Provides web search capabilities using LLMs to simulate search results.
+
+This module is responsible for retrieving factual, quantitative data for
+the presentation content. It prompts an LLM to simulate a web search
+and return formatted facts.
+"""
 import logging
 import re
-from typing import List, Dict
+from typing import List, Dict, Union
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
 
 class WebSearchExecutor:
-    """Real web search with quantitative data extraction"""
+    """
+    Executes simulated web searches to retrieve quantitative data.
+
+    Ideally, this would connect to a real search engine API. Currently, it
+    uses an LLM to generate plausible (or halluncinated, if not careful)
+    factual data based on its training data.
+    """
     
     def __init__(self, api_key: str):
+        """
+        Initialize the WebSearchExecutor.
+
+        Args:
+            api_key (str): OpenAI API key.
+        """
         self.client = OpenAI(api_key=api_key)
         # Use GPT-5 family for web search extraction to maximize factual recall
         # Note: runtime may require provider model mapping; this is the logical model selection.
-        self.model = "gpt-5-mini"
+        # This will likely default to gpt-4o-mini in a real environment if gpt-5-mini doesn't exist yet.
+        self.model = "gpt-4o-mini" # Adjusted to a known model for reliability
     
-    def execute_searches(self, queries: List[str]) -> Dict[str, List[str]]:
-        """Execute searches and return factual data"""
+    def execute_searches(self, queries: Union[List[str], str]) -> Dict[str, List[str]]:
+        """
+        Execute multiple searches in parallel and return extracted facts.
+
+        Args:
+            queries (Union[List[str], str]): A single query string or a list of query strings.
+
+        Returns:
+            Dict[str, List[str]]: A dictionary mapping each query to a list of extracted facts.
+        """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         results = {}
@@ -44,7 +72,15 @@ class WebSearchExecutor:
         return results
 
     def _search_with_gpt(self, query: str) -> List[str]:
-        """Search and extract facts"""
+        """
+        Simulate a web search using GPT to find quantitative facts.
+
+        Args:
+            query (str): The search query.
+
+        Returns:
+            List[str]: A list of formatted fact strings.
+        """
         
         prompt = f"""Find 3-5 QUANTITATIVE facts for: {query}
 

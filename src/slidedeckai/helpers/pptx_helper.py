@@ -1,5 +1,9 @@
 """
 A set of functions to create a PowerPoint slide deck.
+
+This module provides the low-level utilities for interacting with the `python-pptx`
+library to generate slides, insert text, images, charts, and tables, and apply
+formatting based on the selected template.
 """
 import logging
 import os
@@ -7,7 +11,7 @@ import pathlib
 import random
 import re
 import tempfile
-from typing import Optional
+from typing import Optional, List, Tuple, Any, Dict
 
 import json5
 import pptx
@@ -66,8 +70,13 @@ ICON_COLORS = [
 logger = logging.getLogger(__name__)
 logging.getLogger('PIL.PngImagePlugin').setLevel(logging.ERROR)
 
-def remove_unused_placeholders(slide):
-    """Remove empty placeholders from a slide (keep title)."""
+def remove_unused_placeholders(slide: pptx.slide.Slide):
+    """
+    Remove empty placeholders from a slide (keep title).
+
+    Args:
+        slide (pptx.slide.Slide): The slide to clean up.
+    """
     shapes_to_remove = []
     
     for shape in slide.shapes:
@@ -90,8 +99,16 @@ def remove_unused_placeholders(slide):
         except Exception as e:
             logger.warning(f"Could not remove placeholder: {e}")
 
-def get_content_placeholders_left_to_right(slide):
-    """Get content placeholders ordered from left to right (skip title AND subtitle)."""
+def get_content_placeholders_left_to_right(slide: pptx.slide.Slide) -> List[Any]:
+    """
+    Get content placeholders ordered from left to right (skip title AND subtitle).
+
+    Args:
+        slide (pptx.slide.Slide): The slide.
+
+    Returns:
+        List[Any]: Sorted list of placeholder shapes.
+    """
     from pptx.enum.shapes import PP_PLACEHOLDER
     
     content_placeholders = []
@@ -121,9 +138,15 @@ def get_content_placeholders_left_to_right(slide):
     content_placeholders.sort(key=lambda x: x[1])
     return [ph[0] for ph in content_placeholders]
 
-def get_largest_content_placeholder(slide):
+def get_largest_content_placeholder(slide: pptx.slide.Slide) -> Optional[Any]:
     """
     Find the largest non-title, non-subtitle placeholder for content.
+
+    Args:
+        slide (pptx.slide.Slide): The slide.
+
+    Returns:
+        Optional[Any]: The largest placeholder shape, or None if not found.
     """
     from pptx.enum.shapes import PP_PLACEHOLDER
     
@@ -156,18 +179,18 @@ def get_largest_content_placeholder(slide):
     # Return the placeholder with the largest area
     return max(content_placeholders, key=lambda x: x[1])[0]
     
-def get_placeholder_safely(slide, idx, placeholder_name=""):
+def get_placeholder_safely(slide: pptx.slide.Slide, idx: int, placeholder_name: str = "") -> Optional[Any]:
     """
     Safely get a placeholder from a slide by index.
     Falls back to the largest non-title placeholder if index not found.
     
     Args:
-        slide: The slide object
-        idx: The placeholder index to retrieve
-        placeholder_name: Optional name for better error messages
+        slide (pptx.slide.Slide): The slide object.
+        idx (int): The placeholder index to retrieve.
+        placeholder_name (str): Optional name for better error messages.
     
     Returns:
-        The placeholder object if found, None otherwise
+        Optional[Any]: The placeholder object if found, None otherwise.
     """
     try:
         return slide.placeholders[idx]
@@ -198,16 +221,16 @@ def get_placeholder_safely(slide, idx, placeholder_name=""):
         return None
 
 
-def get_placeholder_by_type(slide, placeholder_type):
+def get_placeholder_by_type(slide: pptx.slide.Slide, placeholder_type: int) -> Optional[Any]:
     """
     Get placeholder by type instead of index (more robust).
     
     Args:
-        slide: The slide object
-        placeholder_type: Type of placeholder (e.g., PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.BODY)
+        slide (pptx.slide.Slide): The slide object.
+        placeholder_type (int): Type of placeholder (e.g., PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.BODY).
     
     Returns:
-        The first placeholder of the specified type, or None
+        Optional[Any]: The first placeholder of the specified type, or None.
     """
     for shape in slide.placeholders:
         if shape.placeholder_format.type == placeholder_type:
@@ -215,7 +238,15 @@ def get_placeholder_by_type(slide, placeholder_type):
     return None
     
 def remove_slide_number_from_heading(header: str) -> str:
-    """Remove slide number prefix like 'Slide 1:' from heading."""
+    """
+    Remove slide number prefix like 'Slide 1:' from heading.
+
+    Args:
+        header (str): The heading text.
+
+    Returns:
+        str: The cleaned heading.
+    """
     import re
     SLIDE_NUMBER_REGEX = re.compile(r"^slide[ ]+\d+:", re.IGNORECASE)
     if SLIDE_NUMBER_REGEX.match(header):
@@ -224,13 +255,13 @@ def remove_slide_number_from_heading(header: str) -> str:
     return header
 
 
-def add_bulleted_items(text_frame, flat_items_list: list):
+def add_bulleted_items(text_frame: Any, flat_items_list: list):
     """
     Add bullet points to a text frame with proper formatting.
     
     Args:
-        text_frame: The text frame to add bullets to
-        flat_items_list: List of (text, level) tuples
+        text_frame (Any): The text frame to add bullets to.
+        flat_items_list (list): List of (text, level) tuples.
     """
     for idx, an_item in enumerate(flat_items_list):
         if idx == 0:
@@ -242,13 +273,13 @@ def add_bulleted_items(text_frame, flat_items_list: list):
         STEP_BY_STEP_PROCESS_MARKER = '>> '
         format_text(paragraph, an_item[0].removeprefix(STEP_BY_STEP_PROCESS_MARKER))
 
-def format_text(frame_paragraph, text: str):
+def format_text(frame_paragraph: Any, text: str):
     """
     Apply bold (**text**) and italic (*text*) formatting.
     
     Args:
-        frame_paragraph: The paragraph to format
-        text: Text with markdown-style formatting
+        frame_paragraph (Any): The paragraph to format.
+        text (str): Text with markdown-style formatting.
     """
     import re
     BOLD_ITALICS_PATTERN = re.compile(r'(\*\*(.*?)\*\*|\*(.*?)\*)')
@@ -282,7 +313,21 @@ def generate_powerpoint_presentation(
         slides_template: str,
         output_file_path: pathlib.Path
 ) -> list:
-    """FULLY DYNAMIC WITH STORY AWARENESS"""
+    """
+    Generate a PowerPoint presentation based on parsed data and a template.
+
+    This function orchestrates the entire slide generation process, including
+    template analysis, layout selection, content mapping, and rendering of
+    different content types (text, charts, tables, icons).
+
+    Args:
+        parsed_data (dict): The data for the presentation (slides, titles, content).
+        slides_template (str): The name of the template to use.
+        output_file_path (pathlib.Path): The path to save the generated PPTX file.
+
+    Returns:
+        list: A list of slide headers generated.
+    """
     
     presentation = pptx.Presentation(GlobalConfig.PPTX_TEMPLATE_FILES[slides_template]['file'])
     
@@ -617,8 +662,6 @@ def _handle_key_message(
         slide_height_inch: float
 ):
     """
-    FIXED: Adaptive font color based on background brightness.
-    
     Add a key message box at the bottom center of the slide.
     Text color automatically adapts:
     - Light backgrounds → Black text
@@ -744,8 +787,16 @@ def _get_slide_width_height_inches(presentation: pptx.Presentation) -> tuple[flo
     
 # --------------------------------------------------------------------------------------------- #
 
-def _handle_chart_dynamic(slide, slide_json: dict, layout_capability, analyzer):
-    """Handle charts - use LARGEST content placeholder automatically"""
+def _handle_chart_dynamic(slide: Any, slide_json: dict, layout_capability: Any, analyzer: Any):
+    """
+    Handle chart generation and insertion - use LARGEST content placeholder automatically.
+
+    Args:
+        slide (Any): The slide.
+        slide_json (dict): The slide data including chart info.
+        layout_capability (Any): The layout capability.
+        analyzer (Any): The template analyzer.
+    """
     if 'chart' not in slide_json or not slide_json['chart']:
         return
         
@@ -834,8 +885,16 @@ def _handle_chart_dynamic(slide, slide_json: dict, layout_capability, analyzer):
     except Exception as e:
         logger.error(f"Failed to add chart: {e}")
 
-def _handle_table_dynamic(slide, slide_json: dict, layout_capability, analyzer):
-    """Handle tables - use LARGEST content placeholder automatically"""
+def _handle_table_dynamic(slide: Any, slide_json: dict, layout_capability: Any, analyzer: Any):
+    """
+    Handle table generation and insertion - use LARGEST content placeholder automatically.
+
+    Args:
+        slide (Any): The slide.
+        slide_json (dict): The slide data including table info.
+        layout_capability (Any): The layout capability.
+        analyzer (Any): The template analyzer.
+    """
     if 'table' not in slide_json or not slide_json['table']:
         return
         
@@ -915,10 +974,16 @@ def _handle_table_dynamic(slide, slide_json: dict, layout_capability, analyzer):
         logger.error(f"Failed to add table: {e}")
 
 
-def _handle_icons_dynamic(slide, slide_json: dict, layout_capability, analyzer, presentation):
+def _handle_icons_dynamic(slide: Any, slide_json: dict, layout_capability: Any, analyzer: Any, presentation: Any):
     """
-    ENHANCED: Handle pictogram slides using existing SlideDeck AI icon logic.
-    Uses icons from GlobalConfig.ICONS_DIR with embeddings-based matching.
+    Handle pictogram/icon slide creation.
+
+    Args:
+        slide (Any): The slide.
+        slide_json (dict): The slide data.
+        layout_capability (Any): The layout capability.
+        analyzer (Any): The template analyzer.
+        presentation (Any): The presentation object.
     """
     
     if 'bullet_points' not in slide_json:
@@ -1040,8 +1105,16 @@ def _handle_icons_dynamic(slide, slide_json: dict, layout_capability, analyzer, 
     logger.info(f"✅ Added {n_items} pictograms to slide")
 
 
-def _handle_double_column_dynamic(slide, slide_json: dict, layout_capability, analyzer):
-    """Handle double column - NO HARDCODED SIZES"""
+def _handle_double_column_dynamic(slide: Any, slide_json: dict, layout_capability: Any, analyzer: Any):
+    """
+    Handle double column content - NO HARDCODED SIZES.
+
+    Args:
+        slide (Any): The slide.
+        slide_json (dict): The slide data.
+        layout_capability (Any): The layout capability.
+        analyzer (Any): The analyzer.
+    """
     if 'bullet_points' not in slide_json:
         return
         
@@ -1085,15 +1158,15 @@ def _handle_double_column_dynamic(slide, slide_json: dict, layout_capability, an
     
     logger.info("✓ Double column populated")
 
-def _handle_bullets_dynamic(slide, slide_json: dict, layout_capability, analyzer):
-    """Handle bullets - distribute intelligently across multiple content placeholders.
+def _handle_bullets_dynamic(slide: Any, slide_json: dict, layout_capability: Any, analyzer: Any):
+    """
+    Handle bullet points - distribute intelligently across multiple content placeholders.
 
-    Behavior:
-    - If layout_capability provides content_placeholders, use those (left-to-right order).
-    - If multiple placeholders exist and `bullet_points` is a list of section dicts,
-      map each section to its corresponding placeholder (comparison layout).
-    - Otherwise split the flat bullet list evenly across available placeholders.
-    - Falls back to previous behavior (largest placeholder) if no placeholders found.
+    Args:
+        slide (Any): The slide.
+        slide_json (dict): The slide data.
+        layout_capability (Any): The layout capability.
+        analyzer (Any): The analyzer.
     """
     if 'bullet_points' not in slide_json:
         return

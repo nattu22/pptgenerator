@@ -1,15 +1,33 @@
+"""
+Utilities for processing various file formats uploaded by the user.
+
+This module handles extracting text from documents (TXT, CSV, Excel) and
+extracting structured chart data from images or data files using LLMs.
+"""
 import pandas as pd
 from PIL import Image
 import io
 import logging
-from typing import Union, List, Dict, Optional
+from typing import Union, List, Dict, Optional, Any
 
 logger = logging.getLogger(__name__)
 
 class FileProcessor:
+    """
+    A class containing static methods for file processing.
+    """
+
     @staticmethod
-    def extract_text(file_storage) -> str:
-        """Extract text from txt, csv, xlsx files."""
+    def extract_text(file_storage: Any) -> str:
+        """
+        Extract text content from uploaded files (txt, csv, xlsx).
+
+        Args:
+            file_storage (Any): The Flask FileStorage object.
+
+        Returns:
+            str: The extracted text content.
+        """
         try:
             filename = file_storage.filename.lower()
             if filename.endswith('.txt'):
@@ -37,10 +55,17 @@ class FileProcessor:
             return ""
 
     @staticmethod
-    def extract_chart_data(file_storage, client, model=None) -> Optional[Dict]:
+    def extract_chart_data(file_storage: Any, client: Any, model: Optional[str] = None) -> Optional[Dict]:
         """
-        Extract chart data from uploaded file (Image, Excel, CSV).
-        Returns a JSON object suitable for chart generation.
+        Extract chart data from uploaded file (Image, Excel, CSV) using LLM/Vision.
+
+        Args:
+            file_storage (Any): The file storage object.
+            client (Any): The OpenAI client.
+            model (Optional[str]): The model to use.
+
+        Returns:
+            Optional[Dict]: A JSON object suitable for chart generation, or None if extraction failed.
         """
         from slidedeckai.global_config import GlobalConfig
         if not model:
