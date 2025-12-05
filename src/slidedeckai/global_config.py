@@ -1,5 +1,9 @@
 """
 A set of configurations used by the app.
+
+This module defines the `GlobalConfig` class which holds all global constants
+and configuration settings for the SlideDeck AI application, including LLM
+providers, model details, file paths, and templates.
 """
 import logging
 import os
@@ -18,7 +22,11 @@ _SRC_DIR = Path(__file__).resolve().parent
 @dataclass(frozen=True)
 class GlobalConfig:
     """
-    A data class holding the configurations.
+    A data class holding the global configurations.
+
+    This class is frozen to prevent accidental modification of configuration values
+    during runtime. It contains constants for LLM providers, model specifications,
+    directory paths, and template definitions.
     """
     PROVIDER_ANTHROPIC = 'an'
     PROVIDER_AZURE_OPENAI = 'az'
@@ -293,8 +301,11 @@ def get_max_output_tokens(llm_name: str) -> int:
     """
     Get the max output tokens value configured for an LLM. Return a default value if not configured.
 
-    :param llm_name: The name of the LLM.
-    :return: Max output tokens or a default count.
+    Args:
+        llm_name (str): The name of the LLM.
+
+    Returns:
+        int: Max output tokens or a default count (2048) if the model is unknown.
     """
 
     try:

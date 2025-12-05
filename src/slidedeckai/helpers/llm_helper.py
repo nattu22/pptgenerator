@@ -1,10 +1,14 @@
 """
 Helper functions to access LLMs using LiteLLM.
+
+This module provides utilities for initializing and streaming completions from
+various LLM providers (OpenAI, Anthropic, etc.) via the LiteLLM library.
+It handles model name parsing, validation, and request formatting.
 """
 import logging
 import re
 import urllib3
-from typing import Tuple, Union, Iterator, Optional
+from typing import Tuple, Union, Iterator, Optional, Any
 
 
 from ..global_config import GlobalConfig
@@ -40,9 +44,12 @@ def get_provider_model(provider_model: str, use_ollama: bool) -> Tuple[str, str]
     """
     Parse and get LLM provider and model name from strings like `[provider]model/name-version`.
 
-    :param provider_model: The provider, model name string from `GlobalConfig`.
-    :param use_ollama: Whether Ollama is used (i.e., running in offline mode).
-    :return: The provider and the model name; empty strings in case no matching pattern found.
+    Args:
+        provider_model (str): The provider, model name string from `GlobalConfig`.
+        use_ollama (bool): Whether Ollama is used (i.e., running in offline mode).
+
+    Returns:
+        Tuple[str, str]: The provider and the model name; empty strings in case no matching pattern found.
     """
     provider_model = provider_model.strip()
 
@@ -89,16 +96,20 @@ def is_valid_llm_provider_model(
 ) -> bool:
     """
     Verify whether LLM settings are proper.
+
     This function does not verify whether `api_key` is correct. It only confirms that the key has
     at least five characters. Key verification is done when the LLM is created.
 
-    :param provider: Name of the LLM provider.
-    :param model: Name of the model.
-    :param api_key: The API key or access token.
-    :param azure_endpoint_url: Azure OpenAI endpoint URL.
-    :param azure_deployment_name: Azure OpenAI deployment name.
-    :param azure_api_version: Azure OpenAI API version.
-    :return: `True` if the settings "look" OK; `False` otherwise.
+    Args:
+        provider (str): Name of the LLM provider.
+        model (str): Name of the model.
+        api_key (str): The API key or access token.
+        azure_endpoint_url (str, optional): Azure OpenAI endpoint URL.
+        azure_deployment_name (str, optional): Azure OpenAI deployment name.
+        azure_api_version (str, optional): Azure OpenAI API version.
+
+    Returns:
+        bool: `True` if the settings "look" OK; `False` otherwise.
     """
     if not provider or not model or provider not in GlobalConfig.VALID_PROVIDERS:
         return False
@@ -128,9 +139,12 @@ def get_litellm_model_name(provider: str, model: str) -> Optional[str]:
     Note: Azure OpenAI models are handled separately in stream_litellm_completion()
     and should not be passed to this function.
     
-    :param provider: The LLM provider.
-    :param model: The model name.
-    :return: LiteLLM-compatible model name, or None if provider is not supported.
+    Args:
+        provider (str): The LLM provider.
+        model (str): The model name.
+
+    Returns:
+        Optional[str]: LiteLLM-compatible model name, or None if provider is not supported.
     """
     prefix = GlobalConfig.LITELLM_PROVIDER_MAPPING.get(provider)
     if prefix:
@@ -152,15 +166,22 @@ def stream_litellm_completion(
     """
     Stream completion from LiteLLM.
 
-    :param provider: The LLM provider.
-    :param model: The name of the LLM.
-    :param messages: List of messages for the chat completion.
-    :param max_tokens: The maximum number of tokens to generate.
-    :param api_key: API key or access token to use.
-    :param azure_endpoint_url: Azure OpenAI endpoint URL.
-    :param azure_deployment_name: Azure OpenAI deployment name.
-    :param azure_api_version: Azure OpenAI API version.
-    :return: Iterator of response chunks.
+    Args:
+        provider (str): The LLM provider.
+        model (str): The name of the LLM.
+        messages (list): List of messages for the chat completion.
+        max_tokens (int): The maximum number of tokens to generate.
+        api_key (str, optional): API key or access token to use.
+        azure_endpoint_url (str, optional): Azure OpenAI endpoint URL.
+        azure_deployment_name (str, optional): Azure OpenAI deployment name.
+        azure_api_version (str, optional): Azure OpenAI API version.
+
+    Returns:
+        Iterator[str]: Iterator of response chunks.
+
+    Raises:
+        ImportError: If LiteLLM is not installed.
+        ValueError: If model name or deployment is invalid.
     """
     if litellm is None:
         raise ImportError("LiteLLM is not installed. Please install it with: pip install litellm")
@@ -229,18 +250,24 @@ def get_litellm_llm(
         azure_endpoint_url: str = '',
         azure_deployment_name: str = '',
         azure_api_version: str = '',
-) -> Union[object, None]:
+) -> Union[Any, None]:
     """
     Get a LiteLLM-compatible object for streaming.
 
-    :param provider: The LLM provider.
-    :param model: The name of the LLM.
-    :param max_new_tokens: The maximum number of tokens to generate.
-    :param api_key: API key or access token to use.
-    :param azure_endpoint_url: Azure OpenAI endpoint URL.
-    :param azure_deployment_name: Azure OpenAI deployment name.
-    :param azure_api_version: Azure OpenAI API version.
-    :return: A LiteLLM-compatible object for streaming; `None` in case of any error.
+    Args:
+        provider (str): The LLM provider.
+        model (str): The name of the LLM.
+        max_new_tokens (int): The maximum number of tokens to generate.
+        api_key (str, optional): API key or access token to use.
+        azure_endpoint_url (str, optional): Azure OpenAI endpoint URL.
+        azure_deployment_name (str, optional): Azure OpenAI deployment name.
+        azure_api_version (str, optional): Azure OpenAI API version.
+
+    Returns:
+        Union[Any, None]: A LiteLLM-compatible object for streaming; `None` in case of any error.
+
+    Raises:
+        ImportError: If LiteLLM is not installed.
     """
     if litellm is None:
         raise ImportError("LiteLLM is not installed. Please install it with: pip install litellm")

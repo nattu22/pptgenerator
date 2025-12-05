@@ -1,16 +1,16 @@
 # slidedeckai/agents/execution_orchestrator.py - FULLY FIXED
 """
-CRITICAL FIXES:
-1. Add title and thank-you slides
-2. Extract template properties (colors, fonts)
-3. Complete chart/table insertion
-4. Remove hardcoded values
-5. Add parallel processing
+Orchestrates the execution of a slide deck generation plan.
+
+This module coordinates the content generation, search execution, and PowerPoint
+slide creation. It extracts template properties, manages slide layouts,
+fills placeholders with appropriate content (text, charts, tables, icons),
+and handles the final presentation assembly.
 """
 import logging
 import pathlib
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
@@ -30,9 +30,25 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutionOrchestrator:
-    """FIXED: Complete autonomous execution with template-driven properties"""
+    """
+    Executes a research plan to create a PowerPoint presentation.
+
+    This class handles the end-to-end process of generating slides, including:
+    - Parallel web searches.
+    - Content generation using LLMs.
+    - Intelligent placeholder filling (text, charts, tables).
+    - Template property extraction and application (fonts, colors).
+    """
     
     def __init__(self, api_key: str, template_path: pathlib.Path, use_llm_role_validation: bool = False):
+        """
+        Initialize the orchestrator.
+
+        Args:
+            api_key (str): OpenAI API key.
+            template_path (pathlib.Path): Path to the PowerPoint template file.
+            use_llm_role_validation (bool): Whether to use LLM for advanced role validation of placeholders.
+        """
         self.api_key = api_key
         self.template_path = template_path
         self.search_executor = WebSearchExecutor(api_key)
@@ -55,7 +71,12 @@ class ExecutionOrchestrator:
             self.matcher = None
         
     def _extract_template_properties(self) -> Dict:
-        """FIX #1: Extract ALL template properties dynamically with safe access"""
+        """
+        Extract template properties (colors, fonts, spacing) dynamically.
+
+        Returns:
+            Dict: A dictionary containing extracted properties.
+        """
         properties = {
             'slide_width': self.presentation.slide_width,
             'slide_height': self.presentation.slide_height,
@@ -133,9 +154,18 @@ class ExecutionOrchestrator:
         logger.info(f"✅ Extracted template properties: {len(properties['theme_colors'])} colors")
         return properties
     
-    def execute_plan(self, plan, output_path: pathlib.Path, chart_data: Optional[Dict] = None, extracted_content: Optional[str] = None) -> pathlib.Path:
+    def execute_plan(self, plan: Any, output_path: pathlib.Path, chart_data: Optional[Dict] = None, extracted_content: Optional[str] = None) -> pathlib.Path:
         """
-        FIX #2 & #5: Add title/thank-you slides + parallel processing
+        Execute the research plan and generate the presentation.
+
+        Args:
+            plan (ResearchPlan): The plan to execute.
+            output_path (pathlib.Path): The path to save the generated PPTX file.
+            chart_data (Optional[Dict]): Optional chart data to override generation.
+            extracted_content (Optional[str]): Optional content extracted from uploaded files.
+
+        Returns:
+            pathlib.Path: The path to the generated presentation.
         """
         # DEMO MODE SHORTCUT
         if plan.search_mode == "demo":
@@ -229,7 +259,15 @@ class ExecutionOrchestrator:
         return output_path
     
     def _execute_searches_parallel(self, queries: List[str]) -> Dict[str, List[str]]:
-        """FIX #5: Parallel web search execution"""
+        """
+        Execute web searches in parallel using ThreadPoolExecutor.
+
+        Args:
+            queries (List[str]): List of search queries.
+
+        Returns:
+            Dict[str, List[str]]: Dictionary mapping queries to list of facts.
+        """
         results = {}
         
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -252,8 +290,18 @@ class ExecutionOrchestrator:
         
         return results
 
-    def _prepare_section_content(self, section, placeholder_map: Dict, search_results: Dict) -> Dict:
-        """Generate content for placeholders in parallel and return mapping ph_id->content"""
+    def _prepare_section_content(self, section: Any, placeholder_map: Dict, search_results: Dict) -> Dict:
+        """
+        Generate content for all placeholders in a section in parallel.
+
+        Args:
+            section (Any): The section plan object.
+            placeholder_map (Dict): Map of placeholder IDs to their info.
+            search_results (Dict): Search results.
+
+        Returns:
+            Dict: Mapping of placeholder IDs to generated content.
+        """
         from concurrent.futures import ThreadPoolExecutor, as_completed
         results = {}
 
@@ -334,7 +382,12 @@ class ExecutionOrchestrator:
         return results
     
     def _add_title_slide(self, title: str):
-        """FIX #2: Add proper title slide"""
+        """
+        Add a title slide to the presentation.
+
+        Args:
+            title (str): The title text.
+        """
         title_layout = self.presentation.slide_layouts[0]
         slide = self.presentation.slides.add_slide(title_layout)
         
@@ -354,7 +407,9 @@ class ExecutionOrchestrator:
         logger.info(f"  ✓ Title: {title}")
     
     def _add_thank_you_slide(self):
-        """FIX #2: Add thank you slide"""
+        """
+        Add a 'Thank You' slide at the end of the presentation.
+        """
         title_layout = self.presentation.slide_layouts[0]
         slide = self.presentation.slides.add_slide(title_layout)
         
@@ -364,9 +419,21 @@ class ExecutionOrchestrator:
         
         logger.info(f"  ✓ Thank you slide added")
     
-    def _generate_slide_smart(self, section, search_results: Dict, 
+    def _generate_slide_smart(self, section: Any, search_results: Dict,
                               slide_num: int, total: int, chart_data: Optional[Dict] = None) -> Dict:
-        """Existing logic - updated to handle chart_data"""
+        """
+        Generate a single slide using smart layout analysis and content generation.
+
+        Args:
+            section (Any): The section plan.
+            search_results (Dict): The search results.
+            slide_num (int): The slide number.
+            total (int): Total number of slides.
+            chart_data (Optional[Dict]): Optional chart data.
+
+        Returns:
+            Dict: A log of the slide generation process.
+        """
         
         layout_idx = section.layout_idx
         
@@ -499,8 +566,17 @@ class ExecutionOrchestrator:
         logger.info(f"  ✅ Complete")
         return slide_log
     
-    def _analyze_layout_placeholders(self, slide, layout_idx: int) -> Dict:
-        """Existing logic - unchanged"""
+    def _analyze_layout_placeholders(self, slide: Any, layout_idx: int) -> Dict:
+        """
+        Analyze placeholders on a slide layout.
+
+        Args:
+            slide (Any): The slide object.
+            layout_idx (int): Layout index.
+
+        Returns:
+            Dict: Analysis of placeholders.
+        """
         
         placeholder_map = {}
         
@@ -542,7 +618,19 @@ class ExecutionOrchestrator:
     
     def _determine_placeholder_role(self, type_id: int, type_name: str,
                                      width: float, height: float, area: float) -> str:
-        """Existing logic - unchanged"""
+        """
+        Determine the role of a placeholder based on its type and dimensions.
+
+        Args:
+            type_id (int): Placeholder type ID.
+            type_name (str): Placeholder type name.
+            width (float): Width in inches.
+            height (float): Height in inches.
+            area (float): Area in square inches.
+
+        Returns:
+            str: The role (e.g., 'subtitle', 'chart', 'content').
+        """
         
         if type_id in [1, 4]:
             return 'subtitle'
@@ -565,9 +653,22 @@ class ExecutionOrchestrator:
         
         return 'content'
     
-    def _fill_placeholder_smart(self, slide, ph_id: int, ph_info: Dict,
-                                section, search_results: Dict, prepared_content: Dict = None) -> Dict:
-        """Existing routing logic - unchanged"""
+    def _fill_placeholder_smart(self, slide: Any, ph_id: int, ph_info: Dict,
+                                section: Any, search_results: Dict, prepared_content: Dict = None) -> Dict:
+        """
+        Fill a placeholder based on its role and content availability.
+
+        Args:
+            slide (Any): The slide object.
+            ph_id (int): Placeholder ID.
+            ph_info (Dict): Placeholder info.
+            section (Any): Section plan.
+            search_results (Dict): Search results.
+            prepared_content (Dict, optional): Pre-generated content.
+
+        Returns:
+            Dict: Log of filling process.
+        """
         
         role = ph_info['role']
         area = ph_info['area']
@@ -659,8 +760,19 @@ class ExecutionOrchestrator:
             logger.warning(f"      ⚠️ Unknown role: {role}")
             return {'id': ph_id, 'role': role, 'status': 'skipped'}
     
-    def _fill_subtitle(self, placeholder, ph_id: int, section, search_results: Dict) -> Dict:
-        """FIX #3: Use template fonts safely"""
+    def _fill_subtitle(self, placeholder: Any, ph_id: int, section: Any, search_results: Dict) -> Dict:
+        """
+        Fill a subtitle placeholder using template fonts safely.
+
+        Args:
+            placeholder (Any): The placeholder object.
+            ph_id (int): Placeholder ID.
+            section (Any): Section plan.
+            search_results (Dict): Search results.
+
+        Returns:
+            Dict: Log.
+        """
         
         if not placeholder.has_text_frame:
             return {'id': ph_id, 'status': 'no_text_frame'}
@@ -702,8 +814,20 @@ class ExecutionOrchestrator:
             'status': 'filled'
         }
     
-    def _fill_chart(self, slide, placeholder, ph_id: int, section, search_results: Dict) -> Dict:
-        """FIX #3: COMPLETE chart insertion"""
+    def _fill_chart(self, slide: Any, placeholder: Any, ph_id: int, section: Any, search_results: Dict) -> Dict:
+        """
+        Generate and insert a chart into a placeholder.
+
+        Args:
+            slide (Any): The slide.
+            placeholder (Any): The placeholder.
+            ph_id (int): Placeholder ID.
+            section (Any): Section plan.
+            search_results (Dict): Search results.
+
+        Returns:
+            Dict: Log.
+        """
         
         if 'chart' not in section.enforced_content_type:
             return {'id': ph_id, 'status': 'skipped'}
@@ -811,8 +935,19 @@ class ExecutionOrchestrator:
             'status': 'filled'
         }
 
-    def _insert_chart_from_data(self, slide, placeholder, ph_id: int, chart_data_json: Dict) -> Dict:
-        """Insert chart when chart data JSON is already available (no LLM calls)."""
+    def _insert_chart_from_data(self, slide: Any, placeholder: Any, ph_id: int, chart_data_json: Dict) -> Dict:
+        """
+        Insert chart when chart data JSON is already available (no LLM calls).
+
+        Args:
+            slide (Any): The slide.
+            placeholder (Any): The placeholder.
+            ph_id (int): Placeholder ID.
+            chart_data_json (Dict): The chart data.
+
+        Returns:
+            Dict: Log.
+        """
         # mirrored insertion logic from _fill_chart
         try:
             x = placeholder.left
@@ -866,8 +1001,20 @@ class ExecutionOrchestrator:
             logger.error(f"_insert_chart_from_data failed: {e}")
             return {'id': ph_id, 'status': 'failed', 'error': str(e)}
     
-    def _fill_table(self, slide, placeholder, ph_id: int, section, search_results: Dict) -> Dict:
-        """FIX #3: COMPLETE table insertion"""
+    def _fill_table(self, slide: Any, placeholder: Any, ph_id: int, section: Any, search_results: Dict) -> Dict:
+        """
+        Generate and insert a table into a placeholder.
+
+        Args:
+            slide (Any): The slide.
+            placeholder (Any): The placeholder.
+            ph_id (int): Placeholder ID.
+            section (Any): Section plan.
+            search_results (Dict): Search results.
+
+        Returns:
+            Dict: Log.
+        """
         
         if 'table' not in section.enforced_content_type:
             return {'id': ph_id, 'status': 'skipped'}
@@ -965,8 +1112,19 @@ class ExecutionOrchestrator:
             'status': 'filled'
         }
 
-    def _insert_table_from_data(self, slide, placeholder, ph_id: int, table_data: Dict) -> Dict:
-        """Insert table when table data is already available."""
+    def _insert_table_from_data(self, slide: Any, placeholder: Any, ph_id: int, table_data: Dict) -> Dict:
+        """
+        Insert table when table data is already available.
+
+        Args:
+            slide (Any): The slide.
+            placeholder (Any): The placeholder.
+            ph_id (int): Placeholder ID.
+            table_data (Dict): Table data.
+
+        Returns:
+            Dict: Log.
+        """
         headers = table_data.get('headers', [])
         rows = table_data.get('rows', [])
         if not headers or not rows:
@@ -1026,9 +1184,21 @@ class ExecutionOrchestrator:
             logger.error(f"_insert_table_from_data failed: {e}")
             return {'id': ph_id, 'status': 'failed', 'error': str(e)}
     
-    def _fill_kpi(self, placeholder, ph_id: int, ph_info: Dict,
-                  section, search_results: Dict) -> Dict:
-        """FIX #4: Use theme colors instead of hardcoded"""
+    def _fill_kpi(self, placeholder: Any, ph_id: int, ph_info: Dict,
+                  section: Any, search_results: Dict) -> Dict:
+        """
+        Fill a KPI placeholder with theme colors.
+
+        Args:
+            placeholder (Any): The placeholder.
+            ph_id (int): Placeholder ID.
+            ph_info (Dict): Placeholder info.
+            section (Any): Section plan.
+            search_results (Dict): Search results.
+
+        Returns:
+            Dict: Log.
+        """
         
         if not placeholder.has_text_frame:
             return {'id': ph_id, 'status': 'no_text_frame'}
@@ -1091,9 +1261,21 @@ class ExecutionOrchestrator:
             'status': 'filled'
         }
     
-    def _fill_content(self, placeholder, ph_id: int, ph_info: Dict,
-                      section, search_results: Dict) -> Dict:
-        """FIX #4: Use template fonts"""
+    def _fill_content(self, placeholder: Any, ph_id: int, ph_info: Dict,
+                      section: Any, search_results: Dict) -> Dict:
+        """
+        Fill a general content placeholder using template fonts.
+
+        Args:
+            placeholder (Any): The placeholder.
+            ph_id (int): Placeholder ID.
+            ph_info (Dict): Placeholder info.
+            section (Any): Section plan.
+            search_results (Dict): Search results.
+
+        Returns:
+            Dict: Log.
+        """
         
         if not placeholder.has_text_frame:
             return {'id': ph_id, 'status': 'no_text_frame'}
@@ -1146,7 +1328,15 @@ class ExecutionOrchestrator:
         }
     
     def _calculate_max_bullets(self, area: float) -> int:
-        """Existing logic - unchanged"""
+        """
+        Calculate maximum number of bullets based on placeholder area.
+
+        Args:
+            area (float): Area in square inches.
+
+        Returns:
+            int: Max bullets.
+        """
         if area < 3:
             return 3
         elif area < 10:
@@ -1156,8 +1346,17 @@ class ExecutionOrchestrator:
         else:
             return 10
     
-    def _calculate_font_size_from_area(self, area: float, size_type: str) -> int:
-        """FIX #4: Calculate from template base size"""
+    def _calculate_font_size_from_area(self, area: float, size_type: str) -> Pt:
+        """
+        Calculate appropriate font size based on area and type.
+
+        Args:
+            area (float): Area in square inches.
+            size_type (str): 'large' or 'small'.
+
+        Returns:
+            Pt: Font size.
+        """
         from pptx.util import Pt
         
         base_size = self.template_properties['default_fonts']['size'].pt
@@ -1177,8 +1376,17 @@ class ExecutionOrchestrator:
             else:
                 return Pt(base_size * 0.8)
     
-    def _batch_validate_placeholder_roles(self, section, placeholder_map: Dict) -> Dict:
-        """Batch-validate placeholder roles with a single LLM call. Returns {ph_id: role}"""
+    def _batch_validate_placeholder_roles(self, section: Any, placeholder_map: Dict) -> Dict:
+        """
+        Batch-validate placeholder roles using LLM.
+
+        Args:
+            section (Any): Section plan.
+            placeholder_map (Dict): Placeholder map.
+
+        Returns:
+            Dict: Mapping of {ph_id: valid_role}.
+        """
         roles = ['subtitle', 'chart', 'table', 'kpi', 'content', 'main_content', 'image', 'icon']
         items = []
         for pid, info in placeholder_map.items():
@@ -1252,8 +1460,17 @@ class ExecutionOrchestrator:
             logger.debug(f"Batch role validation failed: {e}")
             return {int(pid): info.get('role') for pid, info in placeholder_map.items()}
 
-    def _execute_mock_plan(self, plan, output_path: pathlib.Path) -> pathlib.Path:
-        """Execute a plan in demo mode purely with mock data"""
+    def _execute_mock_plan(self, plan: Any, output_path: pathlib.Path) -> pathlib.Path:
+        """
+        Execute a plan in demo mode using mock data.
+
+        Args:
+            plan (Any): The plan.
+            output_path (pathlib.Path): Output path.
+
+        Returns:
+            pathlib.Path: Path to saved file.
+        """
 
         # Add Title Slide
         self._add_title_slide(plan.query)
@@ -1288,7 +1505,15 @@ class ExecutionOrchestrator:
         return output_path
 
     def _get_placeholder_type_name(self, type_id: int) -> str:
-        """Existing mapping - unchanged"""
+        """
+        Get the string name for a placeholder type ID.
+
+        Args:
+            type_id (int): Type ID.
+
+        Returns:
+            str: Type name.
+        """
         TYPES = {
             1: 'TITLE', 2: 'BODY', 3: 'CENTER_TITLE', 4: 'SUBTITLE',
             5: 'DATE', 6: 'SLIDE_NUMBER', 7: 'FOOTER', 8: 'HEADER',

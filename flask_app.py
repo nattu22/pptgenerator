@@ -1,13 +1,21 @@
 # app.py - PRODUCTION READY FLASK SERVER
 # ✅ Proper integration of all components
 
+"""
+Main Flask application for SlideDeck AI.
+
+This module provides the backend API and serves the frontend for the SlideDeck AI
+application. It handles plan creation, plan execution, report downloading,
+template management, and chat interactions.
+"""
+
 import os, sys
 import logging
 import traceback
 import tempfile
 import pathlib
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 
 from flask import Flask, request, jsonify, send_file, render_template_string
@@ -52,7 +60,15 @@ slides_cache: Dict[str, Any] = {}
 # ============================================================================
 
 def get_or_create_analyzer(template_key: str) -> TemplateAnalyzer:
-    """Get cached analyzer or create new one for template"""
+    """
+    Get cached analyzer or create a new one for a specific template.
+
+    Args:
+        template_key (str): The key identifying the template (e.g., 'Basic').
+
+    Returns:
+        TemplateAnalyzer: An instance of TemplateAnalyzer for the specified template.
+    """
     if template_key not in template_analyzers:
         logger.info(f"🔍 Creating new analyzer for template: {template_key}")
         template_file = GlobalConfig.PPTX_TEMPLATE_FILES[template_key]['file']
@@ -64,8 +80,16 @@ def get_or_create_analyzer(template_key: str) -> TemplateAnalyzer:
     return template_analyzers[template_key]
 
 
-def serialize_plan(research_plan) -> Dict:
-    """Serialize ResearchPlan to dict properly"""
+def serialize_plan(research_plan: Any) -> Dict[str, Any]:
+    """
+    Serialize a ResearchPlan object to a dictionary properly.
+
+    Args:
+        research_plan: The ResearchPlan object to serialize.
+
+    Returns:
+        Dict[str, Any]: A dictionary representation of the ResearchPlan.
+    """
     
     try:
         # Try Pydantic's built-in serialization
@@ -125,13 +149,27 @@ def serialize_plan(research_plan) -> Dict:
 
 @app.route('/')
 def index():
-    """Serve the HTML UI"""
+    """
+    Serve the main HTML UI.
+
+    Returns:
+        str: The rendered HTML content for the user interface.
+    """
     return render_template_string(HTML_UI)
 
 
 @app.route('/api/plan', methods=['POST'])
 def create_plan():
-    """Phase 1: Create layout-aware research plan with enforced diversity"""
+    """
+    Create a layout-aware research plan based on user input.
+
+    This endpoint handles both JSON requests and multipart/form-data requests
+    (for file uploads). It analyzes the user query and selected template to
+    generate a research plan.
+
+    Returns:
+        Response: A JSON response containing the plan details, or an error message.
+    """
     try:
         api_key = os.getenv('OPENAI_API_KEY') # Default
 
@@ -279,7 +317,15 @@ def create_plan():
 
 @app.route('/api/execute', methods=['POST'])
 def execute_plan():
-    """Phase 2: Execute approved plan with proper mapping"""
+    """
+    Execute an approved research plan to generate the presentation.
+
+    This endpoint uses the plan ID to retrieve the cached plan and executes it,
+    creating the final PowerPoint presentation.
+
+    Returns:
+        Response: A JSON response containing the report ID and execution details, or an error.
+    """
     try:
         data = request.get_json()
         plan_id = data.get('plan_id')
@@ -296,21 +342,22 @@ def execute_plan():
         extracted_content = plan_data.get('extracted_content') # Retrieve extracted content
 
         # Use API key from request if provided (stateless execution)
-        # However, for consistency, if the user provided an API key during plan generation, we should probably stick to it or ask for it again.
-        # Ideally, we should receive it again here or store it in cache (not recommended for secrets).
-        # Let's assume the user has to provide it if not in env, or it's passed in data.
-        # But `html_ui` currently only sends `plan_id`.
-        # I'll stick to env var for now unless I update `execute` frontend call too.
-        # Wait, I should update frontend `approvePlan` to send API key if it was set in settings.
-        # But `approvePlan` logic is separate.
-        # Let's rely on `orchestrator`'s API key.
-        # Actually, `plans_cache` is in-memory. I can store the API key there TEMPORARILY for the session?
-        # A better practice is to pass it from frontend.
-
-        # Retrieve potential API key from plans_cache if I decided to store it there (I didn't).
-        # So I will check if data has api_key (I need to update frontend to send it).
-
         api_key = data.get('api_key') or os.getenv('OPENAI_API_KEY')
+
+        # Handle plan updates from UI
+        updated_sections = data.get('sections')
+        if updated_sections:
+            logger.info(f"🔄 Updating plan with {len(updated_sections)} edited sections")
+            try:
+                from slidedeckai.agents.core_agents import SectionPlan
+                new_sections = []
+                for s in updated_sections:
+                    # Validate/Convert to SectionPlan
+                    new_sections.append(SectionPlan(**s))
+                research_plan.sections = new_sections
+            except Exception as e:
+                logger.error(f"Failed to update sections: {e}")
+                return jsonify({'error': f"Invalid section data: {str(e)}"}), 400
         
         logger.info(f"🚀 Executing plan {plan_id}")
         logger.info(f"  Query: {query}")
@@ -367,8 +414,19 @@ def execute_plan():
 
 
 @app.route('/api/download/<report_id>')
-def download_report(report_id):
-    """Download generated presentation"""
+def download_report(report_id: str):
+    """
+    Download the generated presentation file or its metadata.
+
+    Args:
+        report_id (str): The ID of the report to download.
+
+    Query Parameters:
+        format (str): The format to download ('ppt', 'pptx', or 'json'). Defaults to 'ppt'.
+
+    Returns:
+        Response: The file download or JSON metadata, or an error if not found.
+    """
     try:
         if report_id not in slides_cache:
             return jsonify({'error': 'Report not found'}), 404
@@ -402,7 +460,12 @@ def download_report(report_id):
 
 @app.route('/api/templates', methods=['GET'])
 def get_templates():
-    """Get all available templates"""
+    """
+    Retrieve a list of available PowerPoint templates.
+
+    Returns:
+        Response: A JSON object mapping template keys to their details (caption, file path).
+    """
     try:
         templates = {}
         
@@ -421,7 +484,12 @@ def get_templates():
 
 @app.route('/api/chat', methods=['POST'])
 def chat_slide():
-    """Chat with the slide content to refine it"""
+    """
+    Handle chat interactions to refine specific slides.
+
+    Returns:
+        Response: A JSON response indicating success or failure, with updated content if successful.
+    """
     try:
         data = request.get_json()
         report_id = data.get('report_id')
@@ -447,8 +515,16 @@ def chat_slide():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/preview/<report_id>')
-def preview_report(report_id):
-    """Get preview data for the report (mocking image generation)"""
+def preview_report(report_id: str):
+    """
+    Get preview data for the report (mocking image generation).
+
+    Args:
+        report_id (str): The ID of the report to preview.
+
+    Returns:
+        Response: A JSON object containing slide metadata for preview.
+    """
     # In a real scenario, this would convert PPTX pages to images
     # For now, we return slide metadata to render a HTML preview
     if report_id not in slides_cache:
@@ -473,7 +549,12 @@ def preview_report(report_id):
 
 @app.route('/api/health')
 def health():
-    """Health check endpoint"""
+    """
+    Health check endpoint.
+
+    Returns:
+        Response: A JSON object with system health status and statistics.
+    """
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
