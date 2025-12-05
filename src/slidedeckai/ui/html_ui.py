@@ -31,13 +31,13 @@ HTML_UI = """
             margin-bottom: 30px;
             font-size: 1.1em;
         }
-        .mode-section {
+        .mode-section, .settings-section {
             margin: 25px 0;
             padding: 20px;
             background: #f9fafb;
             border-radius: 12px;
         }
-        .mode-label {
+        .mode-label, .settings-label {
             font-weight: 700;
             color: #374151;
             margin-bottom: 15px;
@@ -73,7 +73,7 @@ HTML_UI = """
             font-weight: 600;
             color: #333;
         }
-        textarea, select {
+        textarea, select, input[type="file"] {
             width: 100%;
             padding: 12px;
             border: 2px solid #e5e7eb;
@@ -229,6 +229,46 @@ HTML_UI = """
                 </div>
             </div>
         </div>
+
+        <div style="margin-bottom: 20px;">
+            <button onclick="toggleSettings()" class="btn" style="background: #4b5563; padding: 10px;">⚙️ Configure API & Model</button>
+        </div>
+
+        <div id="settingsSection" class="settings-section" style="display: none;">
+            <div class="settings-label">Configuration</div>
+
+            <div class="input-group">
+                <label>LLM Provider</label>
+                <select id="llmProvider" onchange="updateModelOptions()">
+                    <option value="oa">OpenAI</option>
+                    <option value="an">Anthropic</option>
+                    <option value="az">Azure OpenAI</option>
+                    <option value="co">Cohere</option>
+                    <option value="gg">Google Gemini</option>
+                    <option value="ol">Ollama</option>
+                    <option value="or">OpenRouter</option>
+                    <option value="sn">SambaNova</option>
+                    <option value="to">Together AI</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>Model</label>
+                <select id="llmModel">
+                    <!-- Populated by JS -->
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>API Key</label>
+                <input type="password" id="apiKey" placeholder="Enter API Key" style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px;">
+            </div>
+
+            <div class="input-group" id="baseUrlGroup" style="display: none;">
+                <label>Base URL (Optional)</label>
+                <input type="text" id="apiBaseUrl" placeholder="https://..." style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px;">
+            </div>
+        </div>
         
         <div class="input-group">
             <label>Template Style</label>
@@ -238,8 +278,30 @@ HTML_UI = """
         </div>
         
         <div class="input-group">
-            <label>Research Query</label>
-            <textarea id="query" placeholder="e.g., Tesla Q4 2024 financial performance and market position"></textarea>
+            <label>Content Source</label>
+            <div style="display: flex; gap: 20px; margin-bottom: 10px;">
+                <label style="font-weight: normal;"><input type="radio" name="sourceType" value="search" checked onclick="toggleSource('search')"> Web Search</label>
+                <label style="font-weight: normal;"><input type="radio" name="sourceType" value="file" onclick="toggleSource('file')"> Upload Files</label>
+            </div>
+
+            <div id="searchSource">
+                <label>Research Query</label>
+                <textarea id="query" placeholder="e.g., Tesla Q4 2024 financial performance and market position"></textarea>
+            </div>
+
+            <div id="fileSource" style="display: none;">
+                <label>Upload Content Files (TXT, CSV, Excel)</label>
+                <input type="file" id="contentFile" multiple accept=".txt,.csv,.xlsx,.xls">
+                <small style="color: #666; margin-top: 5px; display: block;">Extracted content will be used instead of web search.</small>
+                <label style="margin-top: 10px;">Topic / Subject</label>
+                <input type="text" id="fileTopic" placeholder="Briefly describe the topic of the uploaded files" style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px;">
+            </div>
+        </div>
+
+        <div class="input-group">
+             <label>Chart Data (Optional)</label>
+             <input type="file" id="chartFile" accept=".png,.jpg,.jpeg,.csv,.xlsx,.xls">
+             <small style="color: #666; margin-top: 5px; display: block;">Upload image, Excel, or CSV to generate charts based on data.</small>
         </div>
         
         <button class="btn" onclick="generatePlan()">🔍 Analyze & Create Plan</button>
@@ -284,6 +346,56 @@ HTML_UI = """
         let reportId = null;
         let templateOptions = {};
         let planSectionsCollapsed = false;
+        let validModels = {};
+
+        // Valid models from backend config (simplified mapping for frontend)
+        const MODEL_OPTIONS = {
+            'an': ['claude-haiku-4-5'],
+            'az': ['azure/open-ai'],
+            'co': ['command-r-08-2024'],
+            'gg': ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+            'oa': ['gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-5-nano'],
+            'or': ['google/gemini-2.0-flash-001', 'openai/gpt-3.5-turbo'],
+            'sn': ['DeepSeek-V3.1-Terminus', 'Llama-3.3-Swallow-70B-Instruct-v0.4'],
+            'to': ['deepseek-ai/DeepSeek-V3', 'meta-llama/Llama-3.3-70B-Instruct-Turbo', 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo-128K'],
+            'ol': ['llama3'] // Example for ollama
+        };
+
+        function toggleSettings() {
+            const el = document.getElementById('settingsSection');
+            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function updateModelOptions() {
+            const provider = document.getElementById('llmProvider').value;
+            const modelSelect = document.getElementById('llmModel');
+            const baseUrlGroup = document.getElementById('baseUrlGroup');
+
+            modelSelect.innerHTML = '';
+
+            // Show Base URL for certain providers if needed (e.g. Azure, Ollama)
+            if (provider === 'az' || provider === 'ol') {
+                baseUrlGroup.style.display = 'block';
+            } else {
+                baseUrlGroup.style.display = 'none';
+            }
+
+            const models = MODEL_OPTIONS[provider] || [];
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = `[${provider}]${m}`; // Match format in GlobalConfig
+                opt.textContent = m;
+                modelSelect.appendChild(opt);
+            });
+
+            // Trigger selection of first model
+            if (models.length > 0) modelSelect.value = `[${provider}]${models[0]}`;
+        }
+
+        // Initialize models on load
+        window.addEventListener('DOMContentLoaded', () => {
+            updateModelOptions();
+        });
         
         // Function to load templates from the backend
         async function loadTemplates() {
@@ -350,8 +462,20 @@ HTML_UI = """
             });
         }
         
+        function toggleSource(type) {
+            if (type === 'search') {
+                document.getElementById('searchSource').style.display = 'block';
+                document.getElementById('fileSource').style.display = 'none';
+            } else {
+                document.getElementById('searchSource').style.display = 'none';
+                document.getElementById('fileSource').style.display = 'block';
+            }
+        }
+
         function setQuery(text) {
             document.getElementById('query').value = text;
+            // Ensure search mode is selected
+            document.querySelector('input[name="sourceType"][value="search"]').click();
         }
         
         function showStatus(msg, type) {
@@ -361,30 +485,64 @@ HTML_UI = """
         }
         
         async function generatePlan() {
-            const query = document.getElementById('query').value.trim();
-            if (!query) {
-                showStatus('⚠️ Please enter a research query', 'error');
-                return;
-            }
+            const sourceType = document.querySelector('input[name="sourceType"]:checked').value;
+            let query = '';
+            let formData = new FormData();
             
             const template = document.getElementById('template').value;
+            formData.append('template', template);
+            formData.append('search_mode', selectedMode);
             
+            // Add Settings
+            const provider = document.getElementById('llmProvider').value;
+            const model = document.getElementById('llmModel').value;
+            const apiKey = document.getElementById('apiKey').value;
+            const apiBase = document.getElementById('apiBaseUrl').value;
+
+            if (apiKey) formData.append('api_key', apiKey);
+            if (model) formData.append('llm_model', model);
+            if (apiBase) formData.append('api_base', apiBase);
+
+            if (sourceType === 'search') {
+                query = document.getElementById('query').value.trim();
+                if (!query) {
+                    showStatus('⚠️ Please enter a research query', 'error');
+                    return;
+                }
+                formData.append('query', query);
+            } else {
+                const files = document.getElementById('contentFile').files;
+                if (files.length === 0) {
+                    showStatus('⚠️ Please upload at least one file', 'error');
+                    return;
+                }
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('files', files[i]);
+                }
+                query = document.getElementById('fileTopic').value.trim();
+                if (!query) {
+                     showStatus('⚠️ Please enter a topic for the files', 'error');
+                     return;
+                }
+                formData.append('query', query);
+            }
+
+            // Chart file
+            const chartFile = document.getElementById('chartFile').files[0];
+            if (chartFile) {
+                formData.append('chart_file', chartFile);
+            }
+
             document.getElementById('spinner').classList.add('show');
             document.getElementById('planReview').classList.remove('show');
-            showStatus('🔍 Analyzing query and generating research plan...', 'loading');
+            showStatus('🔍 Analyzing input and generating research plan...', 'loading');
             
             try {
                 console.log('🚀 Sending request to /api/plan');
-                console.log('📤 Request data:', { query, search_mode: selectedMode, template });
                 
                 const response = await fetch('/api/plan', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ 
-                        query, 
-                        search_mode: selectedMode,
-                        template: template
-                    })
+                    body: formData // Send as FormData
                 });
                 
                 console.log('📡 Response received');
