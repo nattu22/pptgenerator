@@ -31,13 +31,13 @@ HTML_UI = """
             margin-bottom: 30px;
             font-size: 1.1em;
         }
-        .mode-section {
+        .mode-section, .settings-section {
             margin: 25px 0;
             padding: 20px;
             background: #f9fafb;
             border-radius: 12px;
         }
-        .mode-label {
+        .mode-label, .settings-label {
             font-weight: 700;
             color: #374151;
             margin-bottom: 15px;
@@ -73,7 +73,7 @@ HTML_UI = """
             font-weight: 600;
             color: #333;
         }
-        textarea, select {
+        textarea, select, input[type="file"] {
             width: 100%;
             padding: 12px;
             border: 2px solid #e5e7eb;
@@ -165,6 +165,85 @@ HTML_UI = """
             display: flex;
             gap: 10px;
         }
+
+        /* Preview & Chat Styles */
+        .preview-container {
+            display: none;
+            margin-top: 30px;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+        }
+        .preview-container.show { display: grid; }
+
+        .slide-preview-area {
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 400px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+
+        .chat-area {
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            height: 400px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background: #f9fafb;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            max-width: 85%;
+        }
+        .message.user {
+            background: #eff6ff;
+            color: #1e40af;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .message.ai {
+            background: #f3f4f6;
+            color: #374151;
+            align-self: flex-start;
+        }
+
+        .chat-input-area {
+            padding: 10px;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            gap: 8px;
+        }
+
+        .slide-nav {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        .slide-card {
+            border: 1px solid #e5e7eb;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+        }
         .download-btn {
             flex: 1;
             padding: 12px;
@@ -209,13 +288,127 @@ HTML_UI = """
             background: #e5e7eb;
             transform: translateX(5px);
         }
+        /* Settings Styles */
+        /* Professional UI Updates */
+        .settings-toggle {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 20px;
+        }
+        .btn-settings {
+            background: white;
+            color: #4f46e5;
+            border: 1px solid #e0e7ff;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+        .btn-settings:hover {
+            border-color: #4f46e5;
+            background: #f5f3ff;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .settings-section {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .settings-full {
+            grid-column: 1 / -1;
+        }
+        .settings-label {
+            font-size: 1.25rem;
+            color: #111827;
+            border-bottom: 2px solid #f3f4f6;
+            padding-bottom: 12px;
+            margin-bottom: 0;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+        .input-group label {
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-bottom: 6px;
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <div class="settings-toggle">
+            <button onclick="toggleSettings()" class="btn btn-settings">
+                ⚙️ Configure API & Model
+            </button>
+        </div>
+
         <h1>🚀 SlideDeck AI</h1>
         <p class="subtitle">Intelligent multi-agent system with review & approval workflow</p>
         
+        <div id="settingsSection" class="settings-section" style="display: none;">
+            <div class="settings-label">
+                Configuration Settings
+            </div>
+
+            <div class="settings-grid">
+                <div class="input-group" style="margin: 0;">
+                    <label>LLM Provider</label>
+                    <select id="llmProvider" onchange="updateModelOptions()">
+                        <option value="oa">OpenAI</option>
+                        <option value="an">Anthropic</option>
+                        <option value="az">Azure OpenAI</option>
+                        <option value="co">Cohere</option>
+                        <option value="gg">Google Gemini</option>
+                        <option value="ol">Ollama</option>
+                        <option value="or">OpenRouter</option>
+                        <option value="sn">SambaNova</option>
+                        <option value="to">Together AI</option>
+                    </select>
+                </div>
+
+                <div class="input-group" style="margin: 0;">
+                    <label>Model</label>
+                    <select id="llmModel">
+                        <!-- Populated by JS -->
+                    </select>
+                </div>
+
+                <div class="input-group settings-full" style="margin: 0;">
+                    <label>API Key</label>
+                    <input type="password" id="apiKey" placeholder="Enter API Key" style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; background: #fff;">
+                </div>
+
+                <div class="input-group settings-full" id="baseUrlGroup" style="display: none; margin: 0;">
+                    <label>Base URL (Optional)</label>
+                    <input type="text" id="apiBaseUrl" placeholder="https://..." style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px;">
+                </div>
+            </div>
+        </div>
+
         <div class="mode-section">
             <div class="mode-label">Search Mode</div>
             <div class="mode-options">
@@ -238,8 +431,30 @@ HTML_UI = """
         </div>
         
         <div class="input-group">
-            <label>Research Query</label>
-            <textarea id="query" placeholder="e.g., Tesla Q4 2024 financial performance and market position"></textarea>
+            <label>Content Source</label>
+            <div style="display: flex; gap: 20px; margin-bottom: 10px;">
+                <label style="font-weight: normal;"><input type="radio" name="sourceType" value="search" checked onclick="toggleSource('search')"> Web Search</label>
+                <label style="font-weight: normal;"><input type="radio" name="sourceType" value="file" onclick="toggleSource('file')"> Upload Files</label>
+            </div>
+
+            <div id="searchSource">
+                <label>Research Query</label>
+                <textarea id="query" placeholder="e.g., Tesla Q4 2024 financial performance and market position"></textarea>
+            </div>
+
+            <div id="fileSource" style="display: none;">
+                <label>Upload Content Files (TXT, CSV, Excel)</label>
+                <input type="file" id="contentFile" multiple accept=".txt,.csv,.xlsx,.xls">
+                <small style="color: #666; margin-top: 5px; display: block;">Extracted content will be used instead of web search.</small>
+                <label style="margin-top: 10px;">Topic / Subject</label>
+                <input type="text" id="fileTopic" placeholder="Briefly describe the topic of the uploaded files" style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px;">
+            </div>
+        </div>
+
+        <div class="input-group">
+             <label>Chart Data (Optional)</label>
+             <input type="file" id="chartFile" accept=".png,.jpg,.jpeg,.csv,.xlsx,.xls">
+             <small style="color: #666; margin-top: 5px; display: block;">Upload image, Excel, or CSV to generate charts based on data.</small>
         </div>
         
         <button class="btn" onclick="generatePlan()">🔍 Analyze & Create Plan</button>
@@ -264,6 +479,36 @@ HTML_UI = """
             </div>
         </div>
         
+        <div class="preview-container" id="previewContainer" style="display: none;">
+            <div class="slide-preview-area">
+                <div class="slide-nav">
+                    <button class="btn" style="width: auto; padding: 5px 15px;" onclick="prevSlide()">◀</button>
+                    <span id="slideCounter" style="font-weight: bold;">Slide 1 / 1</span>
+                    <button class="btn" style="width: auto; padding: 5px 15px;" onclick="nextSlide()">▶</button>
+                </div>
+                <div id="slideContent" style="padding: 20px; border: 1px dashed #ccc; min-height: 300px;">
+                    <!-- Slide content goes here -->
+                    <h2 id="previewTitle" style="text-align: center; color: #333;">Slide Title</h2>
+                    <ul id="previewBullets" style="margin-top: 20px;">
+                        <li>Content loading...</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="chat-area">
+                <div style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #374151;">
+                    💬 Refine Slide
+                </div>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message ai">Select a slide and ask me to make changes!</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chatInput" placeholder="e.g., Make the title bolder..." style="flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                    <button onclick="sendChat()" class="btn" style="width: auto; padding: 8px 12px;">➤</button>
+                </div>
+            </div>
+        </div>
+
         <div class="examples">
             <h3 style="margin-bottom: 15px;">💡 Example Queries</h3>
             <div class="example" onclick="setQuery('Apple Inc financial performance and market analysis Q4 2024')">
@@ -284,6 +529,70 @@ HTML_UI = """
         let reportId = null;
         let templateOptions = {};
         let planSectionsCollapsed = false;
+        let validModels = {};
+        let currentPreviewSlides = [];
+        let currentSlideIndex = 0;
+
+        // Valid models passed from backend
+        const MODEL_OPTIONS = {{ model_options | tojson }};
+
+        function toggleSettings() {
+            const el = document.getElementById('settingsSection');
+            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function updateModelOptions() {
+            const provider = document.getElementById('llmProvider').value;
+            const modelSelect = document.getElementById('llmModel');
+            const baseUrlGroup = document.getElementById('baseUrlGroup');
+            const sourceType = document.querySelector('input[name="sourceType"]:checked').value;
+
+            modelSelect.innerHTML = '';
+
+            // Show Base URL for certain providers if needed (e.g. Azure, Ollama)
+            if (provider === 'az' || provider === 'ol') {
+                baseUrlGroup.style.display = 'block';
+            } else {
+                baseUrlGroup.style.display = 'none';
+            }
+
+            const models = MODEL_OPTIONS[provider] || [];
+            let hasSelection = false;
+
+            models.forEach(m => {
+                // Filter logic:
+                // If sourceType is 'search', only show if web_search is TRUE
+                // If sourceType is 'file', show ALL
+
+                if (sourceType === 'search' && m.web_search === false) {
+                    return; // Skip this model
+                }
+
+                const opt = document.createElement('option');
+                opt.value = m.full_key;
+                opt.textContent = m.name + (m.web_search === false ? ' (No Web)' : '');
+                modelSelect.appendChild(opt);
+                hasSelection = true;
+            });
+
+            if (!hasSelection && models.length > 0) {
+                 // Fallback if all filtered out? Should not happen if config is good.
+                 const opt = document.createElement('option');
+                 opt.disabled = true;
+                 opt.textContent = "No compatible models for this mode";
+                 modelSelect.appendChild(opt);
+            }
+
+            // Trigger selection of first model if available
+            if (modelSelect.options.length > 0 && !modelSelect.options[0].disabled) {
+                 modelSelect.selectedIndex = 0;
+            }
+        }
+
+        // Initialize models on load
+        window.addEventListener('DOMContentLoaded', () => {
+            updateModelOptions();
+        });
         
         // Function to load templates from the backend
         async function loadTemplates() {
@@ -350,8 +659,22 @@ HTML_UI = """
             });
         }
         
+        function toggleSource(type) {
+            if (type === 'search') {
+                document.getElementById('searchSource').style.display = 'block';
+                document.getElementById('fileSource').style.display = 'none';
+            } else {
+                document.getElementById('searchSource').style.display = 'none';
+                document.getElementById('fileSource').style.display = 'block';
+            }
+            // Update model options based on source type
+            updateModelOptions();
+        }
+
         function setQuery(text) {
             document.getElementById('query').value = text;
+            // Ensure search mode is selected
+            document.querySelector('input[name="sourceType"][value="search"]').click();
         }
         
         function showStatus(msg, type) {
@@ -361,30 +684,64 @@ HTML_UI = """
         }
         
         async function generatePlan() {
-            const query = document.getElementById('query').value.trim();
-            if (!query) {
-                showStatus('⚠️ Please enter a research query', 'error');
-                return;
-            }
+            const sourceType = document.querySelector('input[name="sourceType"]:checked').value;
+            let query = '';
+            let formData = new FormData();
             
             const template = document.getElementById('template').value;
+            formData.append('template', template);
+            formData.append('search_mode', selectedMode);
+
+            // Add Settings
+            const provider = document.getElementById('llmProvider').value;
+            const model = document.getElementById('llmModel').value;
+            const apiKey = document.getElementById('apiKey').value;
+            const apiBase = document.getElementById('apiBaseUrl').value;
+
+            if (apiKey) formData.append('api_key', apiKey);
+            if (model) formData.append('llm_model', model);
+            if (apiBase) formData.append('api_base', apiBase);
+
+            if (sourceType === 'search') {
+                query = document.getElementById('query').value.trim();
+                if (!query) {
+                    showStatus('⚠️ Please enter a research query', 'error');
+                    return;
+                }
+                formData.append('query', query);
+            } else {
+                const files = document.getElementById('contentFile').files;
+                if (files.length === 0) {
+                    showStatus('⚠️ Please upload at least one file', 'error');
+                    return;
+                }
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('files', files[i]);
+                }
+                query = document.getElementById('fileTopic').value.trim();
+                if (!query) {
+                     showStatus('⚠️ Please enter a topic for the files', 'error');
+                     return;
+                }
+                formData.append('query', query);
+            }
             
+            // Chart file
+            const chartFile = document.getElementById('chartFile').files[0];
+            if (chartFile) {
+                formData.append('chart_file', chartFile);
+            }
+
             document.getElementById('spinner').classList.add('show');
             document.getElementById('planReview').classList.remove('show');
-            showStatus('🔍 Analyzing query and generating research plan...', 'loading');
+            showStatus('🔍 Analyzing input and generating research plan...', 'loading');
             
             try {
                 console.log('🚀 Sending request to /api/plan');
-                console.log('📤 Request data:', { query, search_mode: selectedMode, template });
                 
                 const response = await fetch('/api/plan', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ 
-                        query, 
-                        search_mode: selectedMode,
-                        template: template
-                    })
+                    body: formData // Send as FormData
                 });
                 
                 console.log('📡 Response received');
@@ -620,12 +977,21 @@ HTML_UI = """
             document.getElementById('spinner').classList.add('show');
             showStatus('🚀 Generating slides with SlideDeck AI...', 'loading');
             
+            // Get settings to pass to execution
+            const apiKey = document.getElementById('apiKey').value;
+            const apiBase = document.getElementById('apiBaseUrl').value;
+
+            const payload = {
+                plan_id: currentPlan.plan_id
+            };
+
+            if (apiKey) payload.api_key = apiKey;
+            if (apiBase) payload.api_base = apiBase;
+
             fetch('/api/execute', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ 
-                    plan_id: currentPlan.plan_id  // ✅ FIXED - send plan_id only
-                })
+                body: JSON.stringify(payload)
             })
             .then(response => {
                 if (!response.ok) {
@@ -640,6 +1006,7 @@ HTML_UI = """
                 document.getElementById('spinner').classList.remove('show');
                 showStatus(`✅ Slides generated successfully! (${result.slides_generated} slides in ${result.execution_time})`, 'success');
                 document.getElementById('downloadSection').classList.add('show');
+                loadPreview(reportId);
             })
             .catch(error => {
                 document.getElementById('spinner').classList.remove('show');
@@ -997,6 +1364,91 @@ HTML_UI = """
             .catch(error => {
                 showStatus(`❌ Download failed: ${error.message}`, 'error');
             });
+        }
+
+        // Preview & Chat Functions
+        function loadPreview(id) {
+            fetch(`/api/preview/${id}`)
+            .then(res => res.json())
+            .then(data => {
+                if(data.slides) {
+                    currentPreviewSlides = data.slides;
+                    currentSlideIndex = 0;
+                    document.getElementById('previewContainer').style.display = 'grid';
+                    renderSlide(0);
+                }
+            })
+            .catch(err => console.error("Preview load failed", err));
+        }
+
+        function renderSlide(index) {
+            if(!currentPreviewSlides || currentPreviewSlides.length === 0) return;
+            const slide = currentPreviewSlides[index];
+            document.getElementById('slideCounter').textContent = `Slide ${index + 1} / ${currentPreviewSlides.length}`;
+            document.getElementById('previewTitle').textContent = slide.title || 'Untitled';
+
+            const list = document.getElementById('previewBullets');
+            list.innerHTML = '';
+
+            if (slide.content && Array.isArray(slide.content)) {
+                slide.content.forEach(item => {
+                    const li = document.createElement('li');
+                    li.textContent = item;
+                    list.appendChild(li);
+                });
+            } else {
+                list.innerHTML = '<li>(Visual Content)</li>';
+            }
+        }
+
+        function prevSlide() {
+            if(currentSlideIndex > 0) {
+                currentSlideIndex--;
+                renderSlide(currentSlideIndex);
+            }
+        }
+
+        function nextSlide() {
+            if(currentSlideIndex < currentPreviewSlides.length - 1) {
+                currentSlideIndex++;
+                renderSlide(currentSlideIndex);
+            }
+        }
+
+        async function sendChat() {
+            const input = document.getElementById('chatInput');
+            const msg = input.value.trim();
+            if(!msg || !reportId) return;
+
+            const chatBox = document.getElementById('chatMessages');
+            chatBox.innerHTML += `<div class="message user">${msg}</div>`;
+            input.value = '';
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        report_id: reportId,
+                        slide_idx: currentSlideIndex,
+                        instruction: msg
+                    })
+                });
+                const data = await res.json();
+
+                chatBox.innerHTML += `<div class="message ai">${data.message}</div>`;
+                chatBox.scrollTop = chatBox.scrollHeight;
+
+                // If demo, update content locally
+                if(data.updated_content) {
+                    currentPreviewSlides[currentSlideIndex].title = data.updated_content.title;
+                    currentPreviewSlides[currentSlideIndex].content = data.updated_content.bullets;
+                    renderSlide(currentSlideIndex);
+                }
+
+            } catch(e) {
+                chatBox.innerHTML += `<div class="message ai" style="color:red;">Error: ${e.message}</div>`;
+            }
         }
     </script>
 </body>

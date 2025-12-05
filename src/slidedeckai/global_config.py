@@ -69,86 +69,103 @@ class GlobalConfig:
             'description': 'faster, detailed',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[az]azure/open-ai': {
             'description': 'faster, detailed',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[co]command-r-08-2024': {
             'description': 'simpler, slower',
             'max_new_tokens': 4096,
             'paid': True,
+            'web_search': True,
         },
         '[gg]gemini-2.0-flash': {
             'description': 'fast, detailed',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[gg]gemini-2.0-flash-lite': {
             'description': 'fastest, detailed',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[gg]gemini-2.5-flash': {
             'description': 'fast, detailed',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[gg]gemini-2.5-flash-lite': {
             'description': 'fastest, detailed',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[oa]gpt-4.1-mini': {
             'description': 'faster, medium',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[oa]gpt-4.1-nano': {
             'description': 'faster, shorter',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': False,
         },
         '[oa]gpt-5-nano': {
             'description': 'slow, shorter',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': False,
         },
         '[or]google/gemini-2.0-flash-001': {
             'description': 'Google Gemini-2.0-flash-001 (via OpenRouter)',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[or]openai/gpt-3.5-turbo': {
             'description': 'OpenAI GPT-3.5 Turbo (via OpenRouter)',
             'max_new_tokens': 4096,
             'paid': True,
+            'web_search': True,
         },
         '[sn]DeepSeek-V3.1-Terminus': {
             'description': 'fast, detailed',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[sn]Llama-3.3-Swallow-70B-Instruct-v0.4': {
             'description': 'fast, shorter',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[to]deepseek-ai/DeepSeek-V3': {
             'description': 'slower, medium',
             'max_new_tokens': 8192,
             'paid': True,
+            'web_search': True,
         },
         '[to]meta-llama/Llama-3.3-70B-Instruct-Turbo': {
             'description': 'slower, detailed',
             'max_new_tokens': 4096,
             'paid': True,
+            'web_search': True,
         },
         '[to]meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo-128K': {
             'description': 'faster, shorter',
             'max_new_tokens': 4096,
             'paid': True,
+            'web_search': False,
         }
     }
     LLM_PROVIDER_HELP = (
@@ -181,6 +198,12 @@ class GlobalConfig:
     TINY_BERT_MODEL = 'gaunernst/bert-mini-uncased'
     EMBEDDINGS_FILE_NAME = _SRC_DIR / 'file_embeddings/embeddings.npy'
     ICONS_FILE_NAME = _SRC_DIR / 'file_embeddings/icons.npy'
+
+    # Model settings
+    LLM_MODEL = 'gpt-4o'
+    LLM_MODEL_FAST = 'gpt-4o-mini'
+    LLM_MODEL_VISION = 'gpt-4o'
+    LLM_EMBEDDING_MODEL = 'text-embedding-3-small'
 
     PPTX_TEMPLATE_FILES = {
         'Basic': {
