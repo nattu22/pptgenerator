@@ -584,15 +584,7 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
             
         except Exception as e:
             logger.error(f"    LLM topic generation failed: {e}")
-            return [
-                {
-                    "title": f"Analysis {i+1}",
-                    "purpose": aspects[i] if i < len(aspects) else f"Topic {i+1}",
-                    "best_content": "bullets",
-                    "search_focus": aspects[i] if i < len(aspects) else f"Topic {i+1}"
-                }
-                for i in range(count)
-            ]
+            raise RuntimeError(f"Failed to generate topics: {e}")
     
     def _assign_content_dynamically(self, specs: List, content_phs: List,
                                      blueprint: Dict, query: str, extracted_content: Optional[str] = None):
