@@ -448,26 +448,78 @@ def chat_slide():
 
 @app.route('/api/preview/<report_id>')
 def preview_report(report_id):
-    """Get preview data for the report (mocking image generation)"""
-    # In a real scenario, this would convert PPTX pages to images
-    # For now, we return slide metadata to render a HTML preview
+    """Get preview data for the report using ACTUAL execution log"""
+
     if report_id not in slides_cache:
         return jsonify({'error': 'Report not found'}), 404
 
     cached = slides_cache[report_id]
-    # We could inspect the plan or the PPTX here
-    # Mocking preview data
-    slides = []
-    # Add title slide
-    slides.append({'title': cached.get('topic', 'Title Slide'), 'type': 'title', 'content': []})
+    output_path = cached['path']
+    log_path = str(output_path).replace('.pptx', '.execution.json')
 
-    # Add fake content slides based on what we know (or just generic)
-    for i in range(3):
-        slides.append({
-            'title': f"Slide {i+1}",
-            'type': 'bullets',
-            'content': [f"Point {j+1}" for j in range(3)]
-        })
+    slides = []
+
+    # Try to load execution log
+    try:
+        if os.path.exists(log_path):
+            with open(log_path, 'r') as f:
+                execution_log = json.load(f)
+
+            # Add Title Slide (usually implicit or first in log? logic says it's manually added before loop)
+            # The execution log only contains content slides generated in loop.
+            # We add title slide manually to preview.
+            slides.append({
+                'title': cached.get('topic', 'Title Slide'),
+                'type': 'title',
+                'content': ['Presentation Title']
+            })
+
+            for slide_entry in execution_log:
+                # Extract content from placeholders
+                content_items = []
+                placeholders = slide_entry.get('placeholders', [])
+
+                for ph in placeholders:
+                    if ph.get('status') != 'filled':
+                        continue
+
+                    role = ph.get('role', 'unknown')
+
+                    if role in ['content', 'main_content', 'bullets'] and 'bullets' in ph:
+                        content_items.extend(ph['bullets'])
+                    elif role == 'subtitle' and 'content' in ph:
+                        content_items.append(f"Subtitle: {ph['content']}")
+                    elif role == 'kpi' and 'kpi_data' in ph:
+                        kpi = ph['kpi_data']
+                        content_items.append(f"KPI: {kpi.get('value')} - {kpi.get('label')}")
+                    elif role == 'chart' and 'chart_data' in ph:
+                        chart = ph['chart_data']
+                        content_items.append(f"Chart: {chart.get('title', 'Untitled Chart')}")
+                    elif role == 'table' and 'table_data' in ph:
+                        table = ph['table_data']
+                        headers = table.get('headers', [])
+                        content_items.append(f"Table: {', '.join(map(str, headers))}")
+
+                slides.append({
+                    'title': slide_entry.get('title', f"Slide {slide_entry.get('slide')}"),
+                    'type': 'mixed',
+                    'content': content_items
+                })
+
+            # Add Thank You slide
+            slides.append({
+                'title': 'Thank You',
+                'type': 'title',
+                'content': ['End of Presentation']
+            })
+
+        else:
+            # Fallback if log missing
+            slides.append({'title': 'Processing...', 'type': 'info', 'content': ['Report is being generated...']})
+
+    except Exception as e:
+        logger.error(f"Preview generation failed: {e}")
+        slides.append({'title': 'Error', 'type': 'error', 'content': ['Could not load preview data']})
 
     return jsonify({'slides': slides})
 

@@ -137,11 +137,6 @@ class ExecutionOrchestrator:
         """
         FIX #2 & #5: Add title/thank-you slides + parallel processing
         """
-        # DEMO MODE SHORTCUT
-        if plan.search_mode == "demo":
-            logger.info("🤖 DEMO MODE: Generating mock presentation without LLM/Search")
-            return self._execute_mock_plan(plan, output_path)
-
         logger.info("🚀 Executing FULLY FIXED plan...")
         logger.info(f"  Slides: {len(plan.sections)}")
         
@@ -1146,33 +1141,38 @@ class ExecutionOrchestrator:
         }
     
     def _calculate_max_bullets(self, area: float) -> int:
-        """Existing logic - unchanged"""
-        if area < 3:
+        """Updated logic to reduce overflow risk"""
+        if area < 2:
+            return 2
+        elif area < 5:
             return 3
         elif area < 10:
-            return 5
+            return 4
         elif area < 20:
-            return 7
+            return 5
         else:
-            return 10
+            return 7
     
     def _calculate_font_size_from_area(self, area: float, size_type: str) -> int:
         """FIX #4: Calculate from template base size"""
         from pptx.util import Pt
         
-        base_size = self.template_properties['default_fonts']['size'].pt
+        # Use a slightly smaller base for safety if not strictly defined
+        base_size = self.template_properties.get('default_fonts', {}).get('size', Pt(18)).pt
         
         if size_type == 'large':
             if area < 2:
-                return Pt(base_size * 1.3)
+                return Pt(base_size * 1.2)
             elif area < 5:
-                return Pt(base_size * 1.8)
+                return Pt(base_size * 1.5)
             else:
-                return Pt(base_size * 2.5)
-        else:  # small
+                return Pt(base_size * 2.0)
+        else:  # small or body text
             if area < 2:
-                return Pt(base_size * 0.6)
+                return Pt(base_size * 0.5) # significantly smaller for tiny boxes
             elif area < 5:
+                return Pt(base_size * 0.6)
+            elif area < 10:
                 return Pt(base_size * 0.7)
             else:
                 return Pt(base_size * 0.8)
@@ -1251,41 +1251,6 @@ class ExecutionOrchestrator:
         except Exception as e:
             logger.debug(f"Batch role validation failed: {e}")
             return {int(pid): info.get('role') for pid, info in placeholder_map.items()}
-
-    def _execute_mock_plan(self, plan, output_path: pathlib.Path) -> pathlib.Path:
-        """Execute a plan in demo mode purely with mock data"""
-
-        # Add Title Slide
-        self._add_title_slide(plan.query)
-
-        for section in plan.sections:
-            layout_idx = section.layout_idx
-            layout = self.presentation.slide_layouts[layout_idx]
-            slide = self.presentation.slides.add_slide(layout)
-
-            # Title
-            if slide.shapes.title:
-                slide.shapes.title.text = section.section_title
-
-            # Mock content for placeholders
-            for shape in slide.placeholders:
-                if shape.placeholder_format.idx == 0: continue
-
-                # Simple fallback filling
-                if shape.has_text_frame:
-                    shape.text = f"Demo Content for {section.section_purpose}\n- Mock Point 1\n- Mock Point 2"
-
-        # Add Thank You
-        self._add_thank_you_slide()
-
-        self.presentation.save(output_path)
-
-        # Save mock log
-        log_path = str(output_path).replace('.pptx', '.execution.json')
-        with open(log_path, 'w') as f:
-            json.dump([{'slide': 1, 'status': 'demo_success'}], f)
-
-        return output_path
 
     def _get_placeholder_type_name(self, type_id: int) -> str:
         """Existing mapping - unchanged"""
