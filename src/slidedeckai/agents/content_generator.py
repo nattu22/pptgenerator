@@ -225,3 +225,44 @@ Return ONLY valid JSON:
         kpi_data = json.loads(response.choices[0].message.content)
         logger.info(f"        ✓ KPI: {kpi_data.get('label', 'N/A')}")
         return kpi_data
+
+    def generate_pictogram_data(self, slide_title: str, purpose: str, facts: List[str], count: int = 4) -> List[Dict]:
+        """
+        Generate data for pictogram/icon grid
+        """
+        facts_text = "\n".join(facts)
+
+        prompt = f"""Generate {count} key points for a visual icon grid:
+
+Title: {slide_title}
+Purpose: {purpose}
+Facts: {facts_text}
+
+For each point provide:
+- label: Short bold title (2-4 words)
+- description: Brief supporting text (10-15 words)
+- icon_keyword: A single word visual metaphor (e.g. 'growth', 'money', 'users')
+
+Return ONLY valid JSON:
+[
+  {{"label": "Title", "description": "Desc", "icon_keyword": "keyword"}}
+]"""
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "Generate icon grid data. Return JSON array."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=400,
+            response_format={"type": "json_object"}
+        )
+
+        data = json.loads(response.choices[0].message.content)
+        items = data.get('points', data.get('items', []))
+        if not items and isinstance(data, list):
+            items = data
+
+        logger.info(f"        ✓ Pictogram: {len(items)} items")
+        return items[:count]
