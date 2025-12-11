@@ -808,12 +808,19 @@ class ExecutionOrchestrator:
         elif role == 'kpi':
             return self._fill_kpi(placeholder, ph_id, ph_info, section, search_results)
         
-        elif role == 'pictogram' and prepared_content and prepared_content.get(ph_id):
-             # Handle pictogram insertion
-             items = prepared_content[ph_id].get('items', [])
+        elif role == 'pictogram':
+             items = []
+             if prepared_content and prepared_content.get(ph_id):
+                 items = prepared_content[ph_id].get('items', [])
+             if not items:
+                 items = self.content_generator.generate_pictogram_data(
+                        section.section_title,
+                        section.section_purpose,
+                        list(search_results.values())
+                 )
              return self._fill_pictogram(placeholder, ph_id, items)
 
-        elif role in ['content', 'main_content']:
+        elif role in ['content', 'main_content', 'icon_grid']: # Treat icon_grid as content for now if no specific handler
             return self._fill_content(placeholder, ph_id, ph_info, section, search_results, prepared_content)
         
         else:
