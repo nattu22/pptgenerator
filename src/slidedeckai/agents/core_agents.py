@@ -64,11 +64,6 @@ class PlanGeneratorOrchestrator:
                      model_name: Optional[str] = None) -> ResearchPlan:
         """Existing logic with FIX #1: Validate layouts upfront. Added support for extracted content."""
         
-        # DEMO MODE
-        if user_query.lower() == "ai agents in 2030" and (not self.api_key or self.api_key.startswith('sk-fake')):
-            logger.info("🤖 DEMO MODE: Generating mock plan for 'ai agents in 2030'")
-            return self._generate_mock_plan(user_query, template_layouts)
-
         # Override model if provided
         if model_name:
             self.model = model_name
@@ -664,53 +659,6 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
         
         return 'bullets'
     
-    def _generate_mock_plan(self, query: str, template_layouts: Dict) -> ResearchPlan:
-        """Generate a mock plan for demo purposes"""
-        sections = []
-        # Mock 3 sections using available layouts
-        layouts = sorted([k for k in template_layouts.keys() if k != 0])
-
-        mock_data = [
-            ("The Rise of Autonomous Agents", "Introduction to AI agents and their future impact", "bullets"),
-            ("Market Size Projections", "Financial growth of the AI agent market by 2030", "chart"),
-            ("Key Industry Applications", "Where agents will be deployed: Healthcare, Finance, Coding", "icon_grid")
-        ]
-
-        for i, (title, purpose, ctype) in enumerate(mock_data):
-            layout_idx = layouts[i % len(layouts)]
-            # Create dummy specs
-            layout = template_layouts[layout_idx]
-            specs = []
-
-            # Title spec
-            specs.append(PlaceholderContentSpec(
-                placeholder_idx=0, placeholder_type="TITLE", content_type="text",
-                content_description=title, position_group="title", role="title"
-            ))
-
-            # Content spec
-            content_phs = layout['placeholders'].get('content', [])
-            if content_phs:
-                ph = content_phs[0]
-                specs.append(PlaceholderContentSpec(
-                    placeholder_idx=ph['idx'], placeholder_type=ph['type'],
-                    content_type=ctype, content_description=f"{purpose} - main content",
-                    search_queries=[SearchQuery(query=f"mock data for {title}", purpose="demo")],
-                    position_group=ph.get('position_group', ''), role="content",
-                    dimensions={'area': ph.get('area', 0)}
-                ))
-
-            sections.append(SectionPlan(
-                section_title=title, section_purpose=purpose, layout_type=layout['layout_type'],
-                layout_idx=layout_idx, layout_story="", placeholder_specs=specs,
-                total_search_queries=1, enforced_content_type=ctype
-            ))
-
-        return ResearchPlan(
-            query=query, analysis={"main_subject": "AI Agents", "context": "Future Outlook"},
-            sections=sections, search_mode="demo", total_queries=3, template_info={}
-        )
-
     def _llm_generate_search_query(self, main_query: str, purpose: str,
                                      content_type: str, role: str, extracted_content: Optional[str] = None) -> SearchQuery:
         """Existing - updated to handle content extraction source"""
