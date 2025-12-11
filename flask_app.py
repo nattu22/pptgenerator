@@ -296,20 +296,6 @@ def execute_plan():
         extracted_content = plan_data.get('extracted_content') # Retrieve extracted content
 
         # Use API key from request if provided (stateless execution)
-        # However, for consistency, if the user provided an API key during plan generation, we should probably stick to it or ask for it again.
-        # Ideally, we should receive it again here or store it in cache (not recommended for secrets).
-        # Let's assume the user has to provide it if not in env, or it's passed in data.
-        # But `html_ui` currently only sends `plan_id`.
-        # I'll stick to env var for now unless I update `execute` frontend call too.
-        # Wait, I should update frontend `approvePlan` to send API key if it was set in settings.
-        # But `approvePlan` logic is separate.
-        # Let's rely on `orchestrator`'s API key.
-        # Actually, `plans_cache` is in-memory. I can store the API key there TEMPORARILY for the session?
-        # A better practice is to pass it from frontend.
-
-        # Retrieve potential API key from plans_cache if I decided to store it there (I didn't).
-        # So I will check if data has api_key (I need to update frontend to send it).
-
         api_key = data.get('api_key') or os.getenv('OPENAI_API_KEY')
         
         logger.info(f"🚀 Executing plan {plan_id}")
@@ -465,9 +451,7 @@ def preview_report(report_id):
             with open(log_path, 'r') as f:
                 execution_log = json.load(f)
 
-            # Add Title Slide (usually implicit or first in log? logic says it's manually added before loop)
-            # The execution log only contains content slides generated in loop.
-            # We add title slide manually to preview.
+            # Add Title Slide
             slides.append({
                 'title': cached.get('topic', 'Title Slide'),
                 'type': 'title',

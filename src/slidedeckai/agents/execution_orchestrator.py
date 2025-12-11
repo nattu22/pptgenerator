@@ -254,6 +254,7 @@ class ExecutionOrchestrator:
 
         def _gen_for_ph(ph_id, ph_info):
             role = ph_info.get('role')
+            area = ph_info.get('area', 5)
             # Gather relevant facts
             relevant_facts = []
             for spec in getattr(section, 'placeholder_specs', []):
@@ -304,11 +305,14 @@ class ExecutionOrchestrator:
                     )
                     return (ph_id, {'type': 'kpi', 'kpi_data': kpi})
                 else:
+                    max_bullets = self._calculate_max_bullets(area)
+                    max_words = self._calculate_max_words_per_bullet(area, max_bullets)
                     bullets = self.content_generator.generate_bullets(
                         section.section_title,
                         section.section_purpose,
                         relevant_facts,
-                        max_bullets=self._calculate_max_bullets(ph_info.get('area', 5))
+                        max_bullets=max_bullets,
+                        max_words_per_bullet=max_words
                     )
                     return (ph_id, {'type': 'bullets', 'bullets': bullets})
             except Exception as e:
@@ -648,7 +652,7 @@ class ExecutionOrchestrator:
             return self._fill_kpi(placeholder, ph_id, ph_info, section, search_results)
         
         elif role in ['content', 'main_content']:
-            return self._fill_content(placeholder, ph_id, ph_info, section, search_results)
+            return self._fill_content(placeholder, ph_id, ph_info, section, search_results, prepared_content)
         
         else:
             logger.warning(f"      ⚠️ Unknown role: {role}")
@@ -1087,7 +1091,7 @@ class ExecutionOrchestrator:
         }
     
     def _fill_content(self, placeholder, ph_id: int, ph_info: Dict,
-                      section, search_results: Dict) -> Dict:
+                      section, search_results: Dict, prepared_content: Dict = None) -> Dict:
         """FIX #4: Use template fonts"""
         
         if not placeholder.has_text_frame:
@@ -1099,14 +1103,31 @@ class ExecutionOrchestrator:
                 if query.query in search_results:
                     relevant_facts.extend(search_results[query.query])
         
-        max_bullets = self._calculate_max_bullets(ph_info['area'])
-        
-        bullets = self.content_generator.generate_bullets(
-            section.section_title,
-            section.section_purpose,
-            relevant_facts,
-            max_bullets=max_bullets
-        )
+        # Use prepared content if available
+        if prepared_content and ph_id in prepared_content:
+             data = prepared_content[ph_id]
+             if data.get('bullets'):
+                 bullets = data['bullets']
+             else:
+                 max_bullets = self._calculate_max_bullets(ph_info['area'])
+                 max_words = self._calculate_max_words_per_bullet(ph_info['area'], max_bullets)
+                 bullets = self.content_generator.generate_bullets(
+                    section.section_title,
+                    section.section_purpose,
+                    relevant_facts,
+                    max_bullets=max_bullets,
+                    max_words_per_bullet=max_words
+                )
+        else:
+            max_bullets = self._calculate_max_bullets(ph_info['area'])
+            max_words = self._calculate_max_words_per_bullet(ph_info['area'], max_bullets)
+            bullets = self.content_generator.generate_bullets(
+                section.section_title,
+                section.section_purpose,
+                relevant_facts,
+                max_bullets=max_bullets,
+                max_words_per_bullet=max_words
+            )
         
         text_frame = placeholder.text_frame
         text_frame.clear()
@@ -1152,6 +1173,26 @@ class ExecutionOrchestrator:
             return 5
         else:
             return 7
+
+    def _calculate_max_words_per_bullet(self, area: float, max_bullets: int) -> int:
+        """Calculate max words per bullet based on area and bullet count"""
+        # Assume 18pt font ~ 0.25 inch height per line.
+        # Assume 1.2 line spacing ~ 0.3 inch per line.
+        # Total height needed = max_bullets * lines_per_bullet * 0.3
+        # Max lines total = sqrt(area) / 0.3 (rough approx if square) or height / 0.3
+
+        # Simpler approach:
+        # Area (sq in) / (0.3 inch height * 4 inch width) ~ capacity
+        # Word takes approx 0.5 sq in with spacing?
+        # Let's say 1 sq inch holds ~15 words at 18pt?
+        # 18pt is 1/4 inch. 10 words is ~6 inches long. 6 * 0.25 = 1.5 sq inch.
+        # So 1 sq inch ~ 6 words.
+
+        total_words_capacity = area * 6
+        words_per_bullet = int(total_words_capacity / max_bullets)
+
+        # Clamp
+        return max(5, min(words_per_bullet, 30))
     
     def _calculate_font_size_from_area(self, area: float, size_type: str) -> int:
         """FIX #4: Calculate from template base size"""
