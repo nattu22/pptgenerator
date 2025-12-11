@@ -330,7 +330,8 @@ def execute_plan():
             'path': output_path,
             'topic': query,
             'template': template_key,
-            'plan_id': plan_id
+            'plan_id': plan_id,
+            'api_key': api_key # Cache API key for regeneration
         }
         
         logger.info(f"✅ Slides generated: {report_id}")
@@ -417,17 +418,43 @@ def chat_slide():
         if not report_id or not instruction:
             return jsonify({'error': 'Missing parameters'}), 400
 
+        if report_id not in slides_cache:
+             return jsonify({'error': 'Report not found'}), 404
+
         logger.info(f"💬 Chat for {report_id} slide {slide_idx}: {instruction}")
 
-        # Placeholder response for demo purposes
-        return jsonify({
-            'success': True,
-            'message': 'Slide updated based on instruction',
-            'updated_content': {
-                'title': f"Updated Slide {slide_idx}",
-                'bullets': ["Refined bullet 1", "Refined bullet 2"]
-            }
-        })
+        cached = slides_cache[report_id]
+        output_path = cached['path']
+        template_key = cached['template']
+        api_key = cached.get('api_key') or os.getenv('OPENAI_API_KEY')
+
+        log_path = str(output_path).replace('.pptx', '.execution.json')
+
+        # Re-initialize orchestrator just for regeneration
+        # We need the template path
+        template_file = GlobalConfig.PPTX_TEMPLATE_FILES[template_key]['file']
+        orchestrator = ExecutionOrchestrator(
+            api_key=api_key,
+            template_path=template_file
+        )
+
+        # Call regeneration
+        updated_content = orchestrator.regenerate_slide_content(
+            slide_idx=int(slide_idx),
+            instruction=instruction,
+            execution_log_path=log_path,
+            output_path=str(output_path)
+        )
+
+        if updated_content:
+            return jsonify({
+                'success': True,
+                'message': 'Slide updated based on instruction',
+                'updated_content': updated_content
+            })
+        else:
+            return jsonify({'error': 'Could not update slide content'}), 500
+
     except Exception as e:
         logger.error(f"Chat failed: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500

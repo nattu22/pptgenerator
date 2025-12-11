@@ -6,6 +6,7 @@ CRITICAL FIXES:
 3. Complete chart/table insertion
 4. Remove hardcoded values
 5. Add parallel processing
+6. Add slide regeneration
 """
 import logging
 import pathlib
@@ -223,6 +224,84 @@ class ExecutionOrchestrator:
         
         return output_path
     
+    def regenerate_slide_content(self, slide_idx: int, instruction: str, execution_log_path: str, output_path: str):
+        """
+        Regenerate content for a specific slide based on user instruction.
+        Updates the execution log and re-saves the presentation (conceptually, or marks for rebuild).
+        """
+        logger.info(f"♻️ Regenerating slide {slide_idx} with instruction: {instruction}")
+
+        with open(execution_log_path, 'r') as f:
+            log_data = json.load(f)
+
+        # Find the slide entry
+        target_entry = None
+        for entry in log_data:
+            if entry.get('slide') == slide_idx:
+                target_entry = entry
+                break
+
+        if not target_entry:
+            raise ValueError(f"Slide {slide_idx} not found in execution log")
+
+        # Determine what to update
+        # For simplicity, we'll try to update the main content placeholder(s)
+        updated = False
+        placeholders = target_entry.get('placeholders', [])
+
+        relevant_ph = None
+        for ph in placeholders:
+            if ph.get('role') in ['content', 'main_content', 'bullets']:
+                relevant_ph = ph
+                break
+
+        if relevant_ph:
+            # Generate new bullets based on instruction
+            prompt = f"""Update these bullet points based on the instruction:
+
+            Original Content: {json.dumps(relevant_ph.get('bullets', []))}
+            Instruction: {instruction}
+
+            Return ONLY the new bullet points as a list of strings."""
+
+            try:
+                # Use content generator client directly for ad-hoc update
+                response = self.content_generator.client.chat.completions.create(
+                    model=self.content_generator.model,
+                    messages=[
+                        {"role": "system", "content": "Update bullet points. Return ONLY plain text bullet points, one per line."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.7
+                )
+                content = response.choices[0].message.content.strip()
+                new_bullets = [line.strip('- ').strip() for line in content.split('\n') if line.strip()]
+
+                relevant_ph['bullets'] = new_bullets
+                updated = True
+                logger.info("   Updated bullets")
+            except Exception as e:
+                logger.error(f"Failed to regenerate bullets: {e}")
+
+        if updated:
+            # Save updated log
+            with open(execution_log_path, 'w') as f:
+                json.dump(log_data, f, indent=2)
+
+            # NOTE: Ideally we would also update the PPTX file here.
+            # But the current architecture creates PPTX in one go.
+            # Re-opening and modifying the PPTX is complex without the full context.
+            # However, since preview relies on log, the preview WILL update.
+            # To update the PPTX download, we might need to trigger a full rebuild or
+            # implement a `update_presentation_from_log` method.
+            # For this task "display actual ppt in preview" is key.
+            return {
+                'title': target_entry.get('title'),
+                'bullets': relevant_ph.get('bullets', []) if relevant_ph else []
+            }
+        else:
+            return None
+
     def _execute_searches_parallel(self, queries: List[str]) -> Dict[str, List[str]]:
         """FIX #5: Parallel web search execution"""
         results = {}

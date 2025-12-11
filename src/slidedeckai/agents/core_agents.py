@@ -167,6 +167,7 @@ Your task:
 4. Use multi-content for icon grids
 5. Rotate through layouts - USE ALL AVAILABLE
 6. ENSURE diversity - avoid 3 consecutive same layouts
+7. MANDATORY: You MUST use at least one chart layout and one table layout if available.
 
 Return ONLY valid JSON:
 {{
@@ -202,12 +203,16 @@ REMEMBER: layout_idx MUST be an integer between {min_idx} and {max_idx}."""
                 
                 # ✅ FIX #6: STRICT VALIDATION
                 validated = []
+                used_types = set()
+
                 for i, a in enumerate(assignments):
                     if i >= len(topics):
                         break
                     
                     layout_idx = a.get('layout_idx')
-                    
+                    content_type = a.get('content_type', topics[i].get('best_content', 'bullets'))
+                    used_types.add(content_type)
+
                     # Ensure integer
                     if not isinstance(layout_idx, int):
                         try:
@@ -225,13 +230,22 @@ REMEMBER: layout_idx MUST be an integer between {min_idx} and {max_idx}."""
                         'title': topics[i]['title'],
                         'purpose': topics[i]['purpose'],
                         'layout_idx': layout_idx,
-                        'content_type': a.get('content_type', topics[i].get('best_content', 'bullets'))
+                        'content_type': content_type
                     })
                 
                 # ✅ FIX #6: Ensure we have ALL assignments
                 if len(validated) != len(topics):
                     raise ValueError(f"Expected {len(topics)} assignments, got {len(validated)}")
                 
+                # Manual Check for Diversity enforcement failure
+                if capabilities['chart_capable'] and 'chart' not in used_types and attempt < max_retries - 1:
+                     logger.warning("Diversity Check Failed: Missing Chart. Retrying...")
+                     continue # Retry to get a chart
+
+                if capabilities['table_capable'] and 'table' not in used_types and attempt < max_retries - 1:
+                     logger.warning("Diversity Check Failed: Missing Table. Retrying...")
+                     continue # Retry to get a table
+
                 logger.info(f"    LLM matched {len(validated)} topics to layouts")
                 return validated
                 
