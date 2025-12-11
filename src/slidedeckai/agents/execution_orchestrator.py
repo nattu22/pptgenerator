@@ -642,10 +642,15 @@ class ExecutionOrchestrator:
         return slide_log
     
     def _analyze_layout_placeholders(self, slide, layout_idx: int) -> Dict:
-        """Existing logic - unchanged"""
+        """Enhanced logic utilizing TemplateAnalyzer if available"""
         
         placeholder_map = {}
         
+        # Try to use cached analyzer info first
+        analyzer_layout = None
+        if self.analyzer and int(layout_idx) in self.analyzer.layouts:
+            analyzer_layout = self.analyzer.layouts[int(layout_idx)]
+
         for shape in slide.placeholders:
             ph_idx = shape.placeholder_format.idx
             
@@ -664,9 +669,18 @@ class ExecutionOrchestrator:
                 left, top, width, height = 0.0, 0.0, 1.0, 1.0
             area = width * height
             
-            role = self._determine_placeholder_role(
-                ph_type_id, ph_type_name, width, height, area
-            )
+            # Use analyzer role if available, else fallback
+            role = "content"
+            if analyzer_layout:
+                # Find matching placeholder in analyzer layout
+                for ph in analyzer_layout.all_placeholders:
+                    if ph.idx == ph_idx:
+                        role = ph.role
+                        break
+            else:
+                role = self._determine_placeholder_role(
+                    ph_type_id, ph_type_name, width, height, area
+                )
             
             placeholder_map[ph_idx] = {
                 'type': ph_type_name,
@@ -684,26 +698,26 @@ class ExecutionOrchestrator:
     
     def _determine_placeholder_role(self, type_id: int, type_name: str,
                                      width: float, height: float, area: float) -> str:
-        """Existing logic - unchanged"""
+        """Fallback logic if analyzer is not available"""
         
-        if type_id in [1, 4]:
+        if type_id == 4:
             return 'subtitle'
+        if type_id == 1:
+            return 'title'
+        if type_id in [10, 11, 15]:
+            return 'content'
         
-        if type_id == 10:
-            return 'chart'
-        if type_id == 11:
-            return 'table'
-        if type_id == 15:
-            return 'image'
-        
+        # Consistent with layout_analyzer.py logic
         if type_id in [2, 9, 16, 17]:
-            if height < 0.8:
+            if height < 0.5:
                 return 'subtitle'
-            if area < 3.0:
-                return 'kpi'
-            if area < 15.0:
+            elif area < 1.0:
+                return 'subtitle'
+            else:
+                aspect = width / height if height > 0 else 1.0
+                if aspect > 3.0 and height < 0.8:
+                    return 'subtitle'
                 return 'content'
-            return 'main_content'
         
         return 'content'
     
@@ -1341,37 +1355,29 @@ class ExecutionOrchestrator:
         }
     
     def _calculate_max_bullets(self, area: float) -> int:
-        """Updated logic to reduce overflow risk"""
+        """Strict logic to prevent overflow"""
         if area < 2:
+            return 1
+        elif area < 4:
             return 2
-        elif area < 5:
+        elif area < 8:
             return 3
-        elif area < 10:
+        elif area < 15:
             return 4
-        elif area < 20:
-            return 5
         else:
-            return 7
+            return 6
 
     def _calculate_max_words_per_bullet(self, area: float, max_bullets: int) -> int:
-        """Calculate max words per bullet based on area and bullet count"""
-        # Assume 18pt font ~ 0.25 inch height per line.
-        # Assume 1.2 line spacing ~ 0.3 inch per line.
-        # Total height needed = max_bullets * lines_per_bullet * 0.3
-        # Max lines total = sqrt(area) / 0.3 (rough approx if square) or height / 0.3
+        """Strict calculation of words per bullet based on area"""
+        # Conservative estimation:
+        # 1 word ~ 0.3 sq inch (including line spacing and bullet overhead)
 
-        # Simpler approach:
-        # Area (sq in) / (0.3 inch height * 4 inch width) ~ capacity
-        # Word takes approx 0.5 sq in with spacing?
-        # Let's say 1 sq inch holds ~15 words at 18pt?
-        # 18pt is 1/4 inch. 10 words is ~6 inches long. 6 * 0.25 = 1.5 sq inch.
-        # So 1 sq inch ~ 6 words.
+        words_capacity = int(area * 4) # 4 words per sq inch is safe for 18pt
 
-        total_words_capacity = area * 6
-        words_per_bullet = int(total_words_capacity / max_bullets)
+        per_bullet = words_capacity // max_bullets
 
-        # Clamp
-        return max(5, min(words_per_bullet, 30))
+        # Clamp conservatively
+        return max(3, min(per_bullet, 15))
     
     def _calculate_font_size_from_area(self, area: float, size_type: str) -> int:
         """FIX #4: Calculate from template base size"""

@@ -74,7 +74,7 @@ Available Data:
 
 Requirements:
 - Generate EXACTLY {max_bullets} bullet points
-- Each bullet: {max_words_per_bullet} words MAXIMUM
+- CRITICAL: Each bullet MUST be under {max_words_per_bullet} words.
 - Include QUANTITATIVE data (numbers, percentages)
 - Professional, executive-level tone
 - NO preamble, ONLY bullet points

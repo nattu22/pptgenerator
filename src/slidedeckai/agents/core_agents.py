@@ -447,10 +447,11 @@ CRITICAL: Each aspect must be DIFFERENT. Think like you're planning a presentati
             
         except Exception as e:
             logger.error(f"    LLM analysis failed: {e}")
+            # Robust fallback that forces topic generation to do the heavy lifting
             return {
-                "main_subject": query.split()[0] if query else "Topic",
-                "context": "analysis",
-                "aspects": [f"Aspect {i+1}" for i in range(6)]
+                "main_subject": query,
+                "context": "general presentation",
+                "aspects": []  # Empty aspects forces topic generator to be creative
             }
     
     def _llm_determine_section_count(self, query: str, analysis: Dict, extracted_content: Optional[str] = None) -> int:
@@ -640,11 +641,14 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
             
             sq = self._llm_generate_search_query(query, purpose, ct, f"supporting_{i}", extracted_content)
             
+            # Cleaner description for UI
+            desc = f"Details about {purpose}"
+
             specs.append(PlaceholderContentSpec(
                 placeholder_idx=ph['idx'],
                 placeholder_type=ph['type'],
                 content_type=ct,
-                content_description=f"{purpose} - supporting",
+                content_description=desc,
                 search_queries=[sq],
                 position_group=ph.get('position_group', ''),
                 role="content",
