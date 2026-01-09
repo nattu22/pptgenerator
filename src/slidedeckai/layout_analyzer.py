@@ -182,6 +182,26 @@ class TemplateAnalyzer:
             logger.warning(f"  ⚠️ Missing layouts: {missing}")
         
         logger.info(f"  ✓ Analyzed {len(self.layouts)} layouts successfully")
+
+    def _create_fallback_layout(self, idx: int, layout) -> LayoutCapability:
+        """Create a minimal LayoutCapability if analysis fails"""
+        return LayoutCapability(
+            idx=idx,
+            name=layout.name,
+            has_title=True,
+            has_subtitle=False,
+            has_chart=False,
+            has_table=False,
+            has_picture=False,
+            subtitle_placeholders=[],
+            content_placeholders=[],
+            text_placeholders=[],
+            all_placeholders=[],
+            layout_type="unknown",
+            best_for=["bullets"],
+            spatial_groups={},
+            layout_story="unknown"
+        )
         
     def _analyze_single_layout(self, idx: int, layout) -> LayoutCapability:
         """ENHANCED with smart grouping and metrics"""

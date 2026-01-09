@@ -64,11 +64,6 @@ class PlanGeneratorOrchestrator:
                      model_name: Optional[str] = None) -> ResearchPlan:
         """Existing logic with FIX #1: Validate layouts upfront. Added support for extracted content."""
         
-        # DEMO MODE
-        if user_query.lower() == "ai agents in 2030" and (not self.api_key or self.api_key.startswith('sk-fake')):
-            logger.info("🤖 DEMO MODE: Generating mock plan for 'ai agents in 2030'")
-            return self._generate_mock_plan(user_query, template_layouts)
-
         # Override model if provided
         if model_name:
             self.model = model_name
@@ -139,7 +134,7 @@ class PlanGeneratorOrchestrator:
                                                 capabilities: Dict,
                                                 template_layouts: Dict) -> List[Dict]:
         """
-        FIX #1 & #6: STRICT validation with NO fallbacks
+        FIX #1 & #6: STRICT validation with ALGORITHMIC DIVERSITY ENFORCEMENT
         """
         
         valid_indices = sorted(capabilities['usable_layouts'])
@@ -148,6 +143,20 @@ class PlanGeneratorOrchestrator:
         
         logger.info(f"  Valid layout range: {min_idx} to {max_idx}")
         
+        # PRE-ASSIGN DIVERSITY: Force the LLM to use specific types if possible
+        mandatory_types = []
+        if capabilities['chart_capable']:
+            mandatory_types.append('chart')
+        if capabilities['table_capable']:
+            mandatory_types.append('table')
+        if capabilities['multi_content']:
+            mandatory_types.append('icon_grid')
+
+        # Add mandatory types to the prompt instructions
+        diversity_instr = ""
+        if mandatory_types:
+            diversity_instr = f"MANDATORY: You MUST assign at least one slide to be a {', '.join(mandatory_types)}."
+
         prompt = f"""You have {len(topics)} slide topics and these template capabilities:
 
 CRITICAL CONSTRAINTS:
@@ -160,18 +169,19 @@ Topics:
 {json.dumps(topics, indent=2)}
 
 Template layouts available:
-- Chart-capable layouts: {capabilities['chart_capable']}
-- Table-capable layouts: {capabilities['table_capable']}
-- Multi-content layouts: {capabilities['multi_content']}
+- Chart-capable layouts (USE AT LEAST ONE IF POSSIBLE): {capabilities['chart_capable']}
+- Table-capable layouts (USE AT LEAST ONE IF POSSIBLE): {capabilities['table_capable']}
+- Multi-content layouts (USE FOR ICON GRIDS): {capabilities['multi_content']}
 - All usable layouts: {valid_indices}
 
 Your task:
 1. For each topic, select the BEST layout from {valid_indices}
-2. Use chart layouts for chart content
-3. Use table layouts for table content
-4. Use multi-content for icon grids
+2. Use chart layouts for chart content (financials, trends)
+3. Use table layouts for table content (comparisons, data)
+4. Use multi-content for icon grids or feature lists
 5. Rotate through layouts - USE ALL AVAILABLE
 6. ENSURE diversity - avoid 3 consecutive same layouts
+7. {diversity_instr}
 
 Return ONLY valid JSON:
 {{
@@ -205,38 +215,97 @@ REMEMBER: layout_idx MUST be an integer between {min_idx} and {max_idx}."""
                 data = json.loads(response.choices[0].message.content)
                 assignments = data.get('assignments', [])
                 
-                # ✅ FIX #6: STRICT VALIDATION
+                # ✅ FIX #6: STRICT VALIDATION & ENFORCEMENT
                 validated = []
+                used_types = set()
+
                 for i, a in enumerate(assignments):
                     if i >= len(topics):
                         break
                     
                     layout_idx = a.get('layout_idx')
-                    
+                    content_type = a.get('content_type', topics[i].get('best_content', 'bullets'))
+
                     # Ensure integer
                     if not isinstance(layout_idx, int):
                         try:
                             layout_idx = int(layout_idx)
                         except:
-                            logger.error(f"❌ Invalid layout_idx type: {type(layout_idx)}")
-                            raise ValueError(f"Layout index must be integer, got {type(layout_idx)}")
+                            # Try to infer from template capabilities if LLM failed
+                            if content_type == 'chart' and capabilities['chart_capable']:
+                                layout_idx = capabilities['chart_capable'][0]
+                            elif content_type == 'table' and capabilities['table_capable']:
+                                layout_idx = capabilities['table_capable'][0]
+                            else:
+                                layout_idx = valid_indices[0] # Fallback to first valid
                     
-                    # ✅ FIX #1: STRICT validation - NO fallback
+                    # ✅ FIX #1: STRICT validation
                     if layout_idx not in valid_indices:
-                        logger.error(f"❌ Invalid layout_idx {layout_idx}, valid: {valid_indices}")
-                        raise ValueError(f"Layout {layout_idx} not in valid range")
+                        logger.warning(f"⚠️ Invalid layout_idx {layout_idx}, attempting to fix based on content type {content_type}")
+                        if content_type == 'chart' and capabilities['chart_capable']:
+                            layout_idx = capabilities['chart_capable'][0]
+                        elif content_type == 'table' and capabilities['table_capable']:
+                            layout_idx = capabilities['table_capable'][0]
+                        elif content_type == 'icon_grid' and capabilities['multi_content']:
+                            layout_idx = capabilities['multi_content'][0]
+                        else:
+                             # Find closest valid index or default
+                             layout_idx = min(valid_indices, key=lambda x: abs(x - layout_idx)) if isinstance(layout_idx, int) else valid_indices[0]
+
+                    used_types.add(content_type)
                     
                     validated.append({
                         'title': topics[i]['title'],
                         'purpose': topics[i]['purpose'],
                         'layout_idx': layout_idx,
-                        'content_type': a.get('content_type', topics[i].get('best_content', 'bullets'))
+                        'content_type': content_type
                     })
                 
                 # ✅ FIX #6: Ensure we have ALL assignments
                 if len(validated) != len(topics):
                     raise ValueError(f"Expected {len(topics)} assignments, got {len(validated)}")
                 
+                # ALGORITHMIC DIVERSITY ENFORCEMENT
+                # If LLM failed to include mandatory types, FORCE them onto suitable slides
+                if capabilities['chart_capable'] and 'chart' not in used_types:
+                    logger.warning("Diversity Enforcer: Forcing a CHART slide")
+                    # Find best candidate (e.g. "financial", "growth", "market")
+                    best_idx = -1
+                    for i, t in enumerate(topics):
+                        txt = (t.get('title', '') + t.get('purpose', '')).lower()
+                        if any(x in txt for x in ['growth', 'market', 'financial', 'data', 'trends', 'stats']):
+                            best_idx = i
+                            break
+                    if best_idx == -1: best_idx = 1 # Arbitrary slot (2nd slide)
+
+                    if best_idx < len(validated):
+                        validated[best_idx]['layout_idx'] = capabilities['chart_capable'][0]
+                        validated[best_idx]['content_type'] = 'chart'
+                        used_types.add('chart')
+
+                if capabilities['table_capable'] and 'table' not in used_types:
+                    logger.warning("Diversity Enforcer: Forcing a TABLE slide")
+                    best_idx = -1
+                    for i, t in enumerate(topics):
+                        if i >= len(validated): break
+                        if validated[i]['content_type'] == 'chart': continue # Don't overwrite chart
+
+                        txt = (t.get('title', '') + t.get('purpose', '')).lower()
+                        if any(x in txt for x in ['comparison', 'vs', 'competitors', 'features', 'roadmap']):
+                            best_idx = i
+                            break
+                    if best_idx == -1:
+                        # Find a bullet slide to convert
+                        for i in range(len(validated)):
+                            if validated[i]['content_type'] == 'bullets':
+                                best_idx = i
+                                break
+
+                    if best_idx != -1 and best_idx < len(validated):
+                        validated[best_idx]['layout_idx'] = capabilities['table_capable'][0]
+                        validated[best_idx]['content_type'] = 'table'
+                        used_types.add('table')
+
                 logger.info(f"    LLM matched {len(validated)} topics to layouts")
                 return validated
                 
@@ -307,9 +376,25 @@ REMEMBER: layout_idx MUST be an integer between {min_idx} and {max_idx}."""
         
         # CONTENT
         content_phs = layout['placeholders']['content']
-        self._assign_content_dynamically(
-            specs, content_phs, blueprint, query, extracted_content
-        )
+
+        # Semantic matching for subtitles using TemplateAnalyzer data if available
+        # The analyzer logic groups subtitles with content areas.
+        # We need to leverage that if we can.
+        # However, `layout` here is a dict from `template_layouts` which comes from `TemplateAnalyzer.export_analysis()`.
+        # It should have `semantic_sections`.
+
+        semantic_sections = layout.get('semantic_sections', [])
+
+        if semantic_sections and len(semantic_sections) > 0:
+             # Use semantic grouping to assign content
+             self._assign_content_semantically(
+                 specs, semantic_sections, blueprint, query, extracted_content
+             )
+        else:
+             # Fallback to dynamic assignment
+             self._assign_content_dynamically(
+                 specs, content_phs, blueprint, query, extracted_content
+             )
         
         return SectionPlan(
             section_title=blueprint['title'],
@@ -438,10 +523,11 @@ CRITICAL: Each aspect must be DIFFERENT. Think like you're planning a presentati
             
         except Exception as e:
             logger.error(f"    LLM analysis failed: {e}")
+            # Robust fallback that forces topic generation to do the heavy lifting
             return {
-                "main_subject": query.split()[0] if query else "Topic",
-                "context": "analysis",
-                "aspects": [f"Aspect {i+1}" for i in range(6)]
+                "main_subject": query,
+                "context": "general presentation",
+                "aspects": []  # Empty aspects forces topic generator to be creative
             }
     
     def _llm_determine_section_count(self, query: str, analysis: Dict, extracted_content: Optional[str] = None) -> int:
@@ -586,6 +672,58 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
             logger.error(f"    LLM topic generation failed: {e}")
             raise RuntimeError(f"Failed to generate topics: {e}")
     
+    def _assign_content_semantically(self, specs: List, sections: List[Dict],
+                                     blueprint: Dict, query: str, extracted_content: Optional[str] = None):
+        """Use semantic sections to assign content"""
+
+        purpose = blueprint['purpose']
+        enforced = blueprint['content_type']
+
+        for i, section in enumerate(sections):
+            # subtitle logic was handled above globally, but here we can refine content for this section
+            # The section dict has 'content_areas' list of dicts
+
+            content_areas = section.get('content_areas', [])
+            if not content_areas:
+                continue
+
+            # Determine role for this section
+            section_role = f"part_{i+1}"
+
+            for ph in content_areas:
+                ph_idx = ph.get('idx')
+                area = ph.get('area', 0)
+
+                # Determine content type for this specific placeholder
+                # If enforced is chart/table, usually the largest PH gets it
+                ct = 'bullets'
+                if enforced == 'chart' and area > 15:
+                    ct = 'column_chart'
+                elif enforced == 'table' and area > 15:
+                    ct = 'table'
+                elif enforced == 'icon_grid':
+                    ct = 'icon_grid'
+                elif area < 2.0:
+                    ct = 'kpi'
+
+                sq = self._llm_generate_search_query(query, purpose, ct, section_role, extracted_content)
+                desc = f"Details about {purpose} ({section_role})"
+
+                specs.append(PlaceholderContentSpec(
+                    placeholder_idx=ph_idx,
+                    placeholder_type=ph.get('type', 'OBJECT'),
+                    content_type=ct,
+                    content_description=desc,
+                    search_queries=[sq],
+                    position_group=ph.get('position_group', ''),
+                    role="content",
+                    dimensions={
+                        'width': ph.get('width', 0),
+                        'height': ph.get('height', 0),
+                        'area': area
+                    }
+                ))
+
     def _assign_content_dynamically(self, specs: List, content_phs: List,
                                      blueprint: Dict, query: str, extracted_content: Optional[str] = None):
         """Existing - unchanged"""
@@ -631,11 +769,14 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
             
             sq = self._llm_generate_search_query(query, purpose, ct, f"supporting_{i}", extracted_content)
             
+            # Cleaner description for UI
+            desc = f"Details about {purpose}"
+
             specs.append(PlaceholderContentSpec(
                 placeholder_idx=ph['idx'],
                 placeholder_type=ph['type'],
                 content_type=ct,
-                content_description=f"{purpose} - supporting",
+                content_description=desc,
                 search_queries=[sq],
                 position_group=ph.get('position_group', ''),
                 role="content",
@@ -664,53 +805,6 @@ CRITICAL: All {count} topics must be DIFFERENT. Think like sections in a report.
         
         return 'bullets'
     
-    def _generate_mock_plan(self, query: str, template_layouts: Dict) -> ResearchPlan:
-        """Generate a mock plan for demo purposes"""
-        sections = []
-        # Mock 3 sections using available layouts
-        layouts = sorted([k for k in template_layouts.keys() if k != 0])
-
-        mock_data = [
-            ("The Rise of Autonomous Agents", "Introduction to AI agents and their future impact", "bullets"),
-            ("Market Size Projections", "Financial growth of the AI agent market by 2030", "chart"),
-            ("Key Industry Applications", "Where agents will be deployed: Healthcare, Finance, Coding", "icon_grid")
-        ]
-
-        for i, (title, purpose, ctype) in enumerate(mock_data):
-            layout_idx = layouts[i % len(layouts)]
-            # Create dummy specs
-            layout = template_layouts[layout_idx]
-            specs = []
-
-            # Title spec
-            specs.append(PlaceholderContentSpec(
-                placeholder_idx=0, placeholder_type="TITLE", content_type="text",
-                content_description=title, position_group="title", role="title"
-            ))
-
-            # Content spec
-            content_phs = layout['placeholders'].get('content', [])
-            if content_phs:
-                ph = content_phs[0]
-                specs.append(PlaceholderContentSpec(
-                    placeholder_idx=ph['idx'], placeholder_type=ph['type'],
-                    content_type=ctype, content_description=f"{purpose} - main content",
-                    search_queries=[SearchQuery(query=f"mock data for {title}", purpose="demo")],
-                    position_group=ph.get('position_group', ''), role="content",
-                    dimensions={'area': ph.get('area', 0)}
-                ))
-
-            sections.append(SectionPlan(
-                section_title=title, section_purpose=purpose, layout_type=layout['layout_type'],
-                layout_idx=layout_idx, layout_story="", placeholder_specs=specs,
-                total_search_queries=1, enforced_content_type=ctype
-            ))
-
-        return ResearchPlan(
-            query=query, analysis={"main_subject": "AI Agents", "context": "Future Outlook"},
-            sections=sections, search_mode="demo", total_queries=3, template_info={}
-        )
-
     def _llm_generate_search_query(self, main_query: str, purpose: str,
                                      content_type: str, role: str, extracted_content: Optional[str] = None) -> SearchQuery:
         """Existing - updated to handle content extraction source"""

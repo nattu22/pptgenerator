@@ -4,7 +4,7 @@ Generate actual slide content using GPT with quantitative data
 """
 import logging
 import json
-from typing import List, Dict
+from typing import List, Dict, Any
 from openai import OpenAI
 from slidedeckai.global_config import GlobalConfig
 
@@ -43,26 +43,21 @@ The subtitle should be:
 
 Return ONLY the subtitle text, nothing else."""
         
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "Generate concise subtitles."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.4,
-                max_tokens=20
-            )
-            
-            subtitle = response.choices[0].message.content.strip().strip('"\'')
-            return subtitle if subtitle else "Key Insights"
-            
-        except Exception as e:
-            logger.error(f"Subtitle generation failed: {e}")
-            return "Analysis"
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "Generate concise subtitles."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.4,
+            max_tokens=20
+        )
+
+        subtitle = response.choices[0].message.content.strip().strip('"\'')
+        return subtitle
     
     def generate_bullets(self, slide_title: str, purpose: str,
-                        search_facts: List[str], max_bullets: int = 5) -> List[str]:
+                        search_facts: List[str], max_bullets: int = 5, max_words_per_bullet: int = 20) -> List[str]:
         """
         Generate bullet points from search facts
         """
@@ -79,34 +74,29 @@ Available Data:
 
 Requirements:
 - Generate EXACTLY {max_bullets} bullet points
-- Each bullet: 10-20 words
+- CRITICAL: Each bullet MUST be under {max_words_per_bullet} words.
 - Include QUANTITATIVE data (numbers, percentages)
 - Professional, executive-level tone
 - NO preamble, ONLY bullet points
 
 Return as plain text, one bullet per line."""
         
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "Generate concise, data-driven bullet points."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=300
-            )
-            
-            content = response.choices[0].message.content.strip()
-            bullets = [line.strip('- ').strip() for line in content.split('\n') 
-                      if line.strip() and not line.startswith('```')]
-            
-            logger.info(f"        ✓ {len(bullets)} bullets")
-            return bullets[:max_bullets]
-            
-        except Exception as e:
-            logger.error(f"Bullet generation failed: {e}")
-            return [f"Analysis of {slide_title}", "Key findings pending", "Data review in progress"]
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "Generate concise, data-driven bullet points."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=300
+        )
+
+        content = response.choices[0].message.content.strip()
+        bullets = [line.strip('- ').strip() for line in content.split('\n')
+                  if line.strip() and not line.startswith('```')]
+
+        logger.info(f"        ✓ {len(bullets)} bullets")
+        return bullets[:max_bullets]
     
     def generate_chart(self, slide_title: str, purpose: str,
                       search_facts: List[str], chart_type: str = 'column') -> Dict:
@@ -140,30 +130,20 @@ Return ONLY valid JSON:
   ]
 }}"""
         
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "Generate chart data in JSON format. Return ONLY valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2,
-                max_tokens=400,
-                response_format={"type": "json_object"}
-            )
-            
-            chart_data = json.loads(response.choices[0].message.content)
-            logger.info(f"        ✓ Chart: {len(chart_data.get('categories', []))} cats")
-            return chart_data
-            
-        except Exception as e:
-            logger.error(f"Chart generation failed: {e}")
-            return {
-                "title": slide_title,
-                "type": chart_type,
-                "categories": ["Q1", "Q2", "Q3", "Q4"],
-                "series": [{"name": "Data", "values": [100, 120, 140, 160]}]
-            }
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "Generate chart data in JSON format. Return ONLY valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=400,
+            response_format={"type": "json_object"}
+        )
+
+        chart_data = json.loads(response.choices[0].message.content)
+        logger.info(f"        ✓ Chart: {len(chart_data.get('categories', []))} cats")
+        return chart_data
     
     def generate_table(self, slide_title: str, purpose: str,
                       search_facts: List[str]) -> Dict:
@@ -195,31 +175,20 @@ Return ONLY valid JSON:
   ]
 }}"""
         
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "Generate table data in JSON. Return ONLY valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2,
-                max_tokens=500,
-                response_format={"type": "json_object"}
-            )
-            
-            table_data = json.loads(response.choices[0].message.content)
-            logger.info(f"        ✓ Table: {len(table_data.get('headers', []))} cols")
-            return table_data
-            
-        except Exception as e:
-            logger.error(f"Table generation failed: {e}")
-            return {
-                "headers": ["Metric", "Value", "Change"],
-                "rows": [
-                    ["Revenue", "$XXB", "+X%"],
-                    ["Profit", "$XXB", "+X%"]
-                ]
-            }
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "Generate table data in JSON. Return ONLY valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=500,
+            response_format={"type": "json_object"}
+        )
+
+        table_data = json.loads(response.choices[0].message.content)
+        logger.info(f"        ✓ Table: {len(table_data.get('headers', []))} cols")
+        return table_data
     
     def generate_kpi(self, slide_title: str, fact: str) -> Dict:
         """
@@ -242,22 +211,58 @@ Return ONLY valid JSON:
   "label": "Q4 Revenue"
 }}"""
         
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "Extract KPI data. Return ONLY valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                max_tokens=100,
-                response_format={"type": "json_object"}
-            )
-            
-            kpi_data = json.loads(response.choices[0].message.content)
-            logger.info(f"        ✓ KPI: {kpi_data.get('label', 'N/A')}")
-            return kpi_data
-            
-        except Exception as e:
-            logger.error(f"KPI generation failed: {e}")
-            return {"value": "N/A", "label": slide_title[:20]}
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "Extract KPI data. Return ONLY valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            max_tokens=100,
+            response_format={"type": "json_object"}
+        )
+
+        kpi_data = json.loads(response.choices[0].message.content)
+        logger.info(f"        ✓ KPI: {kpi_data.get('label', 'N/A')}")
+        return kpi_data
+
+    def generate_pictogram_data(self, slide_title: str, purpose: str, facts: List[str], count: int = 4) -> List[Dict]:
+        """
+        Generate data for pictogram/icon grid
+        """
+        facts_text = "\n".join(facts)
+
+        prompt = f"""Generate {count} key points for a visual icon grid:
+
+Title: {slide_title}
+Purpose: {purpose}
+Facts: {facts_text}
+
+For each point provide:
+- label: Short bold title (2-4 words)
+- description: Brief supporting text (10-15 words)
+- icon_keyword: A single word visual metaphor (e.g. 'growth', 'money', 'users')
+
+Return ONLY valid JSON:
+[
+  {{"label": "Title", "description": "Desc", "icon_keyword": "keyword"}}
+]"""
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "Generate icon grid data. Return JSON array."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=400,
+            response_format={"type": "json_object"}
+        )
+
+        data = json.loads(response.choices[0].message.content)
+        items = data.get('points', data.get('items', []))
+        if not items and isinstance(data, list):
+            items = data
+
+        logger.info(f"        ✓ Pictogram: {len(items)} items")
+        return items[:count]

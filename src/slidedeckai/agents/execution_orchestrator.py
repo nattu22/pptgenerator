@@ -6,6 +6,8 @@ CRITICAL FIXES:
 3. Complete chart/table insertion
 4. Remove hardcoded values
 5. Add parallel processing
+6. Add slide regeneration
+7. Pictogram support
 """
 import logging
 import pathlib
@@ -223,6 +225,136 @@ class ExecutionOrchestrator:
         
         return output_path
     
+    def regenerate_slide_content(self, slide_idx: int, instruction: str, execution_log_path: str, output_path: str):
+        """
+        Regenerate content for a specific slide AND rebuild the presentation.
+        """
+        logger.info(f"♻️ Regenerating slide {slide_idx} with instruction: {instruction}")
+
+        with open(execution_log_path, 'r') as f:
+            log_data = json.load(f)
+
+        # Find the slide entry
+        target_entry = None
+        for entry in log_data:
+            if entry.get('slide') == slide_idx:
+                target_entry = entry
+                break
+
+        if not target_entry:
+            raise ValueError(f"Slide {slide_idx} not found in execution log")
+
+        # Determine what to update
+        updated = False
+        placeholders = target_entry.get('placeholders', [])
+
+        relevant_ph = None
+        for ph in placeholders:
+            if ph.get('role') in ['content', 'main_content', 'bullets']:
+                relevant_ph = ph
+                break
+
+        if relevant_ph:
+            prompt = f"""Update these bullet points based on the instruction:
+
+            Original Content: {json.dumps(relevant_ph.get('bullets', []))}
+            Instruction: {instruction}
+
+            Return ONLY the new bullet points as a list of strings."""
+
+            try:
+                response = self.content_generator.client.chat.completions.create(
+                    model=self.content_generator.model,
+                    messages=[
+                        {"role": "system", "content": "Update bullet points. Return ONLY plain text bullet points, one per line."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.7
+                )
+                content = response.choices[0].message.content.strip()
+                new_bullets = [line.strip('- ').strip() for line in content.split('\n') if line.strip()]
+
+                relevant_ph['bullets'] = new_bullets
+                updated = True
+                logger.info("   Updated bullets")
+            except Exception as e:
+                logger.error(f"Failed to regenerate bullets: {e}")
+
+        if updated:
+            # 1. Save updated log
+            with open(execution_log_path, 'w') as f:
+                json.dump(log_data, f, indent=2)
+
+            # 2. REBUILD PRESENTATION FROM LOG
+            self.generate_presentation_from_log(log_data, output_path)
+
+            return {
+                'title': target_entry.get('title'),
+                'bullets': relevant_ph.get('bullets', []) if relevant_ph else []
+            }
+        else:
+            return None
+
+    def generate_presentation_from_log(self, execution_log: List[Dict], output_path: str):
+        """Rebuild the entire presentation from the execution log to ensure PPTX sync."""
+        logger.info("♻️ Rebuilding presentation from log...")
+
+        # Reset slides (keep master)
+        slide_ids = [slide.slide_id for slide in self.presentation.slides]
+        for slide_id in slide_ids:
+            rId = self.presentation.slides._sldIdLst[0].rId
+            self.presentation.part.drop_rel(rId)
+            del self.presentation.slides._sldIdLst[0]
+
+        # Add Title Slide
+        title = execution_log[0].get('title', 'Presentation') if execution_log else 'Presentation'
+        # Ideally get original query from somewhere, but first slide log usually has title
+        self._add_title_slide(title) # Use generic or extracted title
+
+        # Recreate slides
+        for slide_data in execution_log:
+            if slide_data.get('status') == 'failed': continue
+
+            layout_idx = slide_data.get('layout_idx', 1)
+            layout = self.presentation.slide_layouts[layout_idx]
+            slide = self.presentation.slides.add_slide(layout)
+
+            # Title
+            if slide.shapes.title:
+                slide.shapes.title.text = slide_data.get('title', '')
+
+            # Placeholders
+            # We map back ph_id -> content from log
+            # We need to reconstruct the `prepared_content` map format
+            prepared_content = {}
+            for ph in slide_data.get('placeholders', []):
+                ph_id = ph.get('id')
+                if ph_id is not None:
+                    # Convert log format back to prepared_content format
+                    content_data = ph.copy()
+                    # ensure 'type' key matches what _fill_placeholder_smart expects
+                    # The log has 'role' and specific data keys like 'bullets', 'chart_data'
+                    # _fill uses `prepared_content[ph_id]` which has keys like 'bullets', 'chart_data'
+                    prepared_content[ph_id] = content_data
+
+            # Now call _fill_placeholder_smart
+            # We need to re-analyze layout to get ph_info
+            ph_map = self._analyze_layout_placeholders(slide, layout_idx)
+
+            for ph_id, ph_info in ph_map.items():
+                # We pass empty section/search_results as we rely on prepared_content
+                self._fill_placeholder_smart(
+                    slide, ph_id, ph_info,
+                    section=None, search_results={},
+                    prepared_content=prepared_content
+                )
+
+        # Add Thank You
+        self._add_thank_you_slide()
+
+        self.presentation.save(output_path)
+        logger.info(f"✅ Rebuilt presentation saved: {output_path}")
+
     def _execute_searches_parallel(self, queries: List[str]) -> Dict[str, List[str]]:
         """FIX #5: Parallel web search execution"""
         results = {}
@@ -254,6 +386,7 @@ class ExecutionOrchestrator:
 
         def _gen_for_ph(ph_id, ph_info):
             role = ph_info.get('role')
+            area = ph_info.get('area', 5)
             # Gather relevant facts
             relevant_facts = []
             for spec in getattr(section, 'placeholder_specs', []):
@@ -303,12 +436,22 @@ class ExecutionOrchestrator:
                         relevant_facts[0] if relevant_facts else f"KPI for {section.section_title}"
                     )
                     return (ph_id, {'type': 'kpi', 'kpi_data': kpi})
+                elif role == 'pictogram' or role == 'icon':
+                    items = self.content_generator.generate_pictogram_data(
+                        section.section_title,
+                        section.section_purpose,
+                        relevant_facts
+                    )
+                    return (ph_id, {'type': 'pictogram', 'items': items})
                 else:
+                    max_bullets = self._calculate_max_bullets(area)
+                    max_words = self._calculate_max_words_per_bullet(area, max_bullets)
                     bullets = self.content_generator.generate_bullets(
                         section.section_title,
                         section.section_purpose,
                         relevant_facts,
-                        max_bullets=self._calculate_max_bullets(ph_info.get('area', 5))
+                        max_bullets=max_bullets,
+                        max_words_per_bullet=max_words
                     )
                     return (ph_id, {'type': 'bullets', 'bullets': bullets})
             except Exception as e:
@@ -368,8 +511,7 @@ class ExecutionOrchestrator:
         if not isinstance(layout_idx, int):
             layout_idx = int(layout_idx)
         
-        logger.info(f"📄 Slide {slide_num}: {section.section_title} ({section.enforced_content_type})")
-        logger.info(f"  Layout {layout_idx}: {section.layout_type}")
+        logger.info(f"📄 Slide {slide_num}: {section.section_title if section else 'Rebuild'} ({section.enforced_content_type if section else 'N/A'})")
         
         # Get layout
         layout = self.presentation.slide_layouts[layout_idx]
@@ -379,51 +521,56 @@ class ExecutionOrchestrator:
         placeholder_map = self._analyze_layout_placeholders(slide, layout_idx)
 
         # Integrate ContentLayoutMatcher suggestions (Gap 1 fix)
-        try:
-            if self.matcher and self.analyzer:
-                layout_capability = None
-                try:
-                    layout_capability = self.analyzer.layouts.get(int(layout_idx))
-                except Exception:
+        # ONLY if section is provided (not during rebuild)
+        if section:
+            try:
+                if self.matcher and self.analyzer:
                     layout_capability = None
-
-                # Build a minimal slide_json for matcher
-                slide_json = {
-                    'heading': getattr(section, 'section_title', ''),
-                    'section_purpose': getattr(section, 'section_purpose', ''),
-                    'bullet_points': []
-                }
-                # Populate bullets from placeholder_specs descriptions when available
-                for spec in getattr(section, 'placeholder_specs', []) or []:
                     try:
-                        desc = getattr(spec, 'content_description', None) or getattr(spec, 'content_type', None)
-                        if desc:
-                            slide_json['bullet_points'].append(str(desc))
+                        layout_capability = self.analyzer.layouts.get(int(layout_idx))
                     except Exception:
-                        continue
+                        layout_capability = None
 
-                if layout_capability:
-                    try:
-                        content_map = self.matcher.map_content_to_placeholders(slide_json, layout_capability)
-                        # Merge suggestions into placeholder_map
-                        for pid, spec in content_map.items():
-                            try:
-                                pid_key = int(pid) if isinstance(pid, (str, float)) else pid
-                            except Exception:
-                                pid_key = pid
-                            if pid_key in placeholder_map and isinstance(spec, dict):
-                                suggested_type = spec.get('type') or spec.get('role')
-                                if suggested_type:
-                                    placeholder_map[pid_key]['role'] = suggested_type
-                                placeholder_map[pid_key]['suggested_content'] = spec
-                    except Exception as e:
-                        logger.debug(f"ContentLayoutMatcher mapping failed: {e}")
-        except Exception:
-            pass
+                    # Build a minimal slide_json for matcher
+                    slide_json = {
+                        'heading': getattr(section, 'section_title', ''),
+                        'section_purpose': getattr(section, 'section_purpose', ''),
+                        'bullet_points': []
+                    }
+                    # Populate bullets from placeholder_specs descriptions when available
+                    for spec in getattr(section, 'placeholder_specs', []) or []:
+                        try:
+                            desc = getattr(spec, 'content_description', None) or getattr(spec, 'content_type', None)
+                            if desc:
+                                slide_json['bullet_points'].append(str(desc))
+                        except Exception:
+                            continue
+
+                    if layout_capability:
+                        try:
+                            content_map = self.matcher.map_content_to_placeholders(slide_json, layout_capability)
+                            # Merge suggestions into placeholder_map
+                            for pid, spec in content_map.items():
+                                try:
+                                    pid_key = int(pid) if isinstance(pid, (str, float)) else pid
+                                except Exception:
+                                    pid_key = pid
+                                if pid_key in placeholder_map and isinstance(spec, dict):
+                                    suggested_type = spec.get('type') or spec.get('role')
+                                    if suggested_type:
+                                        placeholder_map[pid_key]['role'] = suggested_type
+                                    placeholder_map[pid_key]['suggested_content'] = spec
+                        except Exception as e:
+                            logger.debug(f"ContentLayoutMatcher mapping failed: {e}")
+            except Exception:
+                pass
 
         # PREPARE content for placeholders in parallel (only text/chart/table data generation)
         # If chart_data is provided globally, we inject it into prepared_content for chart placeholders
-        prepared_content = self._prepare_section_content(section, placeholder_map, search_results)
+        if section:
+            prepared_content = self._prepare_section_content(section, placeholder_map, search_results)
+        else:
+            prepared_content = {} # Will be passed from outside if rebuild
         
         if chart_data:
              for ph_id, ph_info in placeholder_map.items():
@@ -437,7 +584,7 @@ class ExecutionOrchestrator:
             logger.info(f"    [{ph_id}] {ph_info['type']} - {ph_info['area']:.1f} sq in - {ph_info['role']}")
 
         # Optional LLM-assisted role validation/override (batched)
-        if getattr(self, 'use_llm_role_validation', False):
+        if section and getattr(self, 'use_llm_role_validation', False):
             logger.info("  🤖 Validating placeholder roles with LLM (batched)...")
             try:
                 overrides = self._batch_validate_placeholder_roles(section, placeholder_map)
@@ -457,16 +604,16 @@ class ExecutionOrchestrator:
         
         # Set title
         title_shape = slide.shapes.title
-        if title_shape:
+        if title_shape and section:
             title_shape.text = section.section_title
             logger.info(f"    ✓ Title set")
         
         # Generate content for EACH placeholder
         slide_log = {
             'slide': slide_num,
-            'title': section.section_title,
+            'title': section.section_title if section else '',
             'layout_idx': layout_idx,
-            'layout_type': section.layout_type,
+            'layout_type': section.layout_type if section else 'unknown',
             'placeholders_found': len(placeholder_map),
             'placeholders': []
         }
@@ -495,10 +642,15 @@ class ExecutionOrchestrator:
         return slide_log
     
     def _analyze_layout_placeholders(self, slide, layout_idx: int) -> Dict:
-        """Existing logic - unchanged"""
+        """Enhanced logic utilizing TemplateAnalyzer if available"""
         
         placeholder_map = {}
         
+        # Try to use cached analyzer info first
+        analyzer_layout = None
+        if self.analyzer and int(layout_idx) in self.analyzer.layouts:
+            analyzer_layout = self.analyzer.layouts[int(layout_idx)]
+
         for shape in slide.placeholders:
             ph_idx = shape.placeholder_format.idx
             
@@ -517,9 +669,18 @@ class ExecutionOrchestrator:
                 left, top, width, height = 0.0, 0.0, 1.0, 1.0
             area = width * height
             
-            role = self._determine_placeholder_role(
-                ph_type_id, ph_type_name, width, height, area
-            )
+            # Use analyzer role if available, else fallback
+            role = "content"
+            if analyzer_layout:
+                # Find matching placeholder in analyzer layout
+                for ph in analyzer_layout.all_placeholders:
+                    if ph.idx == ph_idx:
+                        role = ph.role
+                        break
+            else:
+                role = self._determine_placeholder_role(
+                    ph_type_id, ph_type_name, width, height, area
+                )
             
             placeholder_map[ph_idx] = {
                 'type': ph_type_name,
@@ -537,26 +698,26 @@ class ExecutionOrchestrator:
     
     def _determine_placeholder_role(self, type_id: int, type_name: str,
                                      width: float, height: float, area: float) -> str:
-        """Existing logic - unchanged"""
+        """Fallback logic if analyzer is not available"""
         
-        if type_id in [1, 4]:
+        if type_id == 4:
             return 'subtitle'
+        if type_id == 1:
+            return 'title'
+        if type_id in [10, 11, 15]:
+            return 'content'
         
-        if type_id == 10:
-            return 'chart'
-        if type_id == 11:
-            return 'table'
-        if type_id == 15:
-            return 'image'
-        
+        # Consistent with layout_analyzer.py logic
         if type_id in [2, 9, 16, 17]:
-            if height < 0.8:
+            if height < 0.5:
                 return 'subtitle'
-            if area < 3.0:
-                return 'kpi'
-            if area < 15.0:
+            elif area < 1.0:
+                return 'subtitle'
+            else:
+                aspect = width / height if height > 0 else 1.0
+                if aspect > 3.0 and height < 0.8:
+                    return 'subtitle'
                 return 'content'
-            return 'main_content'
         
         return 'content'
     
@@ -579,8 +740,8 @@ class ExecutionOrchestrator:
         # Or if the role was detected as 'icon' by LLM
         if role == 'icon' or (role == 'content' and area < 1.0):
              # Try to find a keyword for icon
-             keyword = section.section_title # Default
-             if section.placeholder_specs:
+             keyword = section.section_title if section else 'Icon' # Default
+             if section and section.placeholder_specs:
                  for spec in section.placeholder_specs:
                      if spec.placeholder_idx == ph_id:
                          keyword = spec.content_description
@@ -647,8 +808,20 @@ class ExecutionOrchestrator:
         elif role == 'kpi':
             return self._fill_kpi(placeholder, ph_id, ph_info, section, search_results)
         
-        elif role in ['content', 'main_content']:
-            return self._fill_content(placeholder, ph_id, ph_info, section, search_results)
+        elif role == 'pictogram':
+             items = []
+             if prepared_content and prepared_content.get(ph_id):
+                 items = prepared_content[ph_id].get('items', [])
+             if not items:
+                 items = self.content_generator.generate_pictogram_data(
+                        section.section_title,
+                        section.section_purpose,
+                        list(search_results.values())
+                 )
+             return self._fill_pictogram(placeholder, ph_id, items)
+
+        elif role in ['content', 'main_content', 'icon_grid']: # Treat icon_grid as content for now if no specific handler
+            return self._fill_content(placeholder, ph_id, ph_info, section, search_results, prepared_content)
         
         else:
             logger.warning(f"      ⚠️ Unknown role: {role}")
@@ -1085,9 +1258,40 @@ class ExecutionOrchestrator:
             'kpi_data': kpi_data,
             'status': 'filled'
         }
+
+    def _fill_pictogram(self, placeholder, ph_id: int, items: List[Dict]) -> Dict:
+        """Fill a placeholder with bulleted list styled as pictograms/features"""
+        if not placeholder.has_text_frame:
+            return {'id': ph_id, 'status': 'no_text_frame'}
+
+        text_frame = placeholder.text_frame
+        text_frame.clear()
+
+        for item in items:
+            # Bullet point with icon-like prefix
+            p = text_frame.add_paragraph()
+            p.text = f"■ {item.get('label', 'Feature')}: {item.get('description', '')}"
+            p.level = 0
+
+            # Apply basic styling
+            for run in p.runs:
+                try:
+                    default_fonts = self.template_properties.get('default_fonts', {'name': 'Calibri', 'size': Pt(18)})
+                    run.font.name = default_fonts.get('name', 'Calibri')
+                    if hasattr(default_fonts.get('size'), 'pt'):
+                        run.font.size = Pt(default_fonts.get('size').pt * 0.9)
+                except Exception:
+                    pass
+
+        return {
+            'id': ph_id,
+            'role': 'pictogram',
+            'items': items,
+            'status': 'filled'
+        }
     
     def _fill_content(self, placeholder, ph_id: int, ph_info: Dict,
-                      section, search_results: Dict) -> Dict:
+                      section, search_results: Dict, prepared_content: Dict = None) -> Dict:
         """FIX #4: Use template fonts"""
         
         if not placeholder.has_text_frame:
@@ -1099,14 +1303,31 @@ class ExecutionOrchestrator:
                 if query.query in search_results:
                     relevant_facts.extend(search_results[query.query])
         
-        max_bullets = self._calculate_max_bullets(ph_info['area'])
-        
-        bullets = self.content_generator.generate_bullets(
-            section.section_title,
-            section.section_purpose,
-            relevant_facts,
-            max_bullets=max_bullets
-        )
+        # Use prepared content if available
+        if prepared_content and ph_id in prepared_content:
+             data = prepared_content[ph_id]
+             if data.get('bullets'):
+                 bullets = data['bullets']
+             else:
+                 max_bullets = self._calculate_max_bullets(ph_info['area'])
+                 max_words = self._calculate_max_words_per_bullet(ph_info['area'], max_bullets)
+                 bullets = self.content_generator.generate_bullets(
+                    section.section_title,
+                    section.section_purpose,
+                    relevant_facts,
+                    max_bullets=max_bullets,
+                    max_words_per_bullet=max_words
+                )
+        else:
+            max_bullets = self._calculate_max_bullets(ph_info['area'])
+            max_words = self._calculate_max_words_per_bullet(ph_info['area'], max_bullets)
+            bullets = self.content_generator.generate_bullets(
+                section.section_title,
+                section.section_purpose,
+                relevant_facts,
+                max_bullets=max_bullets,
+                max_words_per_bullet=max_words
+            )
         
         text_frame = placeholder.text_frame
         text_frame.clear()
@@ -1141,17 +1362,29 @@ class ExecutionOrchestrator:
         }
     
     def _calculate_max_bullets(self, area: float) -> int:
-        """Updated logic to reduce overflow risk"""
+        """Strict logic to prevent overflow"""
         if area < 2:
+            return 1
+        elif area < 4:
             return 2
-        elif area < 5:
+        elif area < 8:
             return 3
-        elif area < 10:
+        elif area < 15:
             return 4
-        elif area < 20:
-            return 5
         else:
-            return 7
+            return 6
+
+    def _calculate_max_words_per_bullet(self, area: float, max_bullets: int) -> int:
+        """Strict calculation of words per bullet based on area"""
+        # Conservative estimation:
+        # 1 word ~ 0.3 sq inch (including line spacing and bullet overhead)
+
+        words_capacity = int(area * 4) # 4 words per sq inch is safe for 18pt
+
+        per_bullet = words_capacity // max_bullets
+
+        # Clamp conservatively
+        return max(3, min(per_bullet, 15))
     
     def _calculate_font_size_from_area(self, area: float, size_type: str) -> int:
         """FIX #4: Calculate from template base size"""
@@ -1179,7 +1412,7 @@ class ExecutionOrchestrator:
     
     def _batch_validate_placeholder_roles(self, section, placeholder_map: Dict) -> Dict:
         """Batch-validate placeholder roles with a single LLM call. Returns {ph_id: role}"""
-        roles = ['subtitle', 'chart', 'table', 'kpi', 'content', 'main_content', 'image', 'icon']
+        roles = ['subtitle', 'chart', 'table', 'kpi', 'content', 'main_content', 'image', 'icon', 'pictogram']
         items = []
         for pid, info in placeholder_map.items():
             try:
